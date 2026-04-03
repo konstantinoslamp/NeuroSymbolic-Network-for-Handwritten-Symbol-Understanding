@@ -84,7 +84,7 @@ def evaluate(model, x_test, y_test, batch_size=32):
     return accuracy
 
 if __name__ == "__main__":
-    model = train_cnn_with_operators(epochs=3, batch_size=32, learning_rate=0.01)
+    model = train_cnn_with_operators(epochs=2, batch_size=32, learning_rate=0.01)
     
     # Save the trained model
     model.save_weights('trained_cnn_model.pkl')

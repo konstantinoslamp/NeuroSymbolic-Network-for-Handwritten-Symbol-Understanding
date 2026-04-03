@@ -27,7 +27,7 @@ def main():
     print("="*70)
     
     # Check if model exists
-    model_path = 'trained_cnn_model.pkl'
+    model_path = 'src/neural/trained_cnn_model.pkl'
     if not os.path.exists(model_path):
         print(f"\n❌ ERROR: Model file '{model_path}' not found!")
         print("Please run training first: python src/neural/train.py")

@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:ojs.aaai.org)",
+      "Bash(python -c \"import docx; print\\('ok'\\)\")",
+      "Bash(pip install:*)",
+      "Bash(python generate_doc.py)",
+      "Bash(python -c \"import os; print\\(os.path.getsize\\('proposed_changes.docx'\\), 'bytes'\\)\")",
+      "Bash(python -c \"import clingo; print\\('clingo ok'\\)\")",
+      "Bash(python -c \"import pyDatalog; print\\('pyDatalog ok'\\)\")",
+      "Bash(python -c \"import kanren; print\\('kanren ok'\\)\")",
+      "Bash(python:*)"
+    ]
+  }
+}

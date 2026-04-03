@@ -1,5 +1,5 @@
 import numpy as np
-from cnn import Conv2D, MaxPool2D, Flatten, Dense, ReLU, SoftmaxCrossEntropy
+from src.neural.cnn import Conv2D, MaxPool2D, Flatten, Dense, ReLU, SoftmaxCrossEntropy
 import pickle 
 
 class CNN:
@@ -72,13 +72,14 @@ class CNN:
         """
         return self.loss_fn.forward(logits, labels)
 
-    def backward(self):
+    def backward(self, grad=None):
         """
         Backward pass: compute gradients by backpropagating through all layers.
         Starts from loss and goes backwards through the network.
         """
         # Get gradient from loss function (w.r.t. logits)
-        grad = self.loss_fn.backward()
+        if grad is None:
+            grad = self.loss_fn.backward()
         
         # Backprop through second dense layer
         grad = self.fc2.backward(grad)
