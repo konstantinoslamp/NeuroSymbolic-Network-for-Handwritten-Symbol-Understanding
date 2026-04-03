@@ -89,57 +89,103 @@ pytest tests/
 
 ## Architecture Overview
 
-The neurosymbolic system implements the compositional interface pattern from **Tsamoura et al. (AAAI 2021)**, with four core modules:
+The neurosymbolic system implements the compositional interface pattern from **Tsamoura et al. (AAAI 2021)**:
 
-### Neural Layer
-- **`src/neural/cnn.py`** & **`digit_recognizer.py`**: CNN-based perception, outputs softmax probabilities P(symbol | image)
-- **`neural_interface.py`**: Exposes `neural_deduction()` (forward pass) and `neural_induction()` (gradient updates)
+```
++----------------------------------------------------------------------+
+|                       PERCEPTION LAYER                              |
+|                                                                      |
+|   +------------------+         +------------------+                 |
+|   |  DigitCNN        |         |  OperatorCNN     |                 |
+|   |  (ResNet-9)      |         |  (ResNet-9)      |                 |
+|   |  10-class        |         |  4-class         |                 |
+|   |  Softmax + T     |         |  Softmax + T     |  T = temp scale |
+|   |  P(d | img)      |         |  P(op | img)     |                 |
+|   +--------+---------+         +---------+--------+                 |
+|            +------------------+----------+                          |
+|                               |                                     |
+|            Probabilistic Symbol Stream                              |
+|            { P(d1), P(op), P(d2) }  per image triplet              |
++-------------------------------+--------------------------------------+
+                                |
+                                v
++----------------------------------------------------------------------+
+|                  NEURAL-SYMBOLIC BRIDGE                             |
+|                                                                      |
+|  NeuralModule Interface                                              |
+|  +------------------------------------------------------------------+|
+|  | neural_deduction(images)  ->  { probs, logits, symbols }        ||
+|  | neural_induction(images, semantic_loss_grad)  ->  delta_theta   ||
+|  +------------------------------------------------------------------+|
+|                    <->  clean interface                             |
+|  SymbolicModule Interface                                            |
+|  +------------------------------------------------------------------+|
+|  | symbolic_deduction(symbols)  ->  { valid, result, proof }       ||
+|  | symbolic_abduction(target, probs)  ->  [{ e*, P(e*) }]         ||
+|  +------------------------------------------------------------------+|
++-------------------------------+--------------------------------------+
+                                |
+                                v
++----------------------------------------------------------------------+
+|                  SYMBOLIC REASONING LAYER                           |
+|                                                                      |
+|  Knowledge Base (Datalog / ASP)                                     |
+|    digit(0..9).   operator(+,-,x,/).                                |
+|    valid_expr(D,Op,D2) :- digit(D), operator(Op), digit(D2).       |
+|    result(D1,+,D2,R)   :- R is D1 + D2.                            |
+|    no_div_zero(_,/,D2) :- D2 != 0.                                 |
+|                                                                      |
+|  +--------------------+   +--------------------------------+         |
+|  | Deduction Engine   |   | Abduction Engine               |         |
+|  | (forward eval)     |   | AC-3 / SAT / ILP               |         |
+|  | KB |- result(e)    |   | Returns: all e* s.t. result=R  |         |
+|  +--------------------+   | + P(e* | neural_probs)         |         |
+|                           +--------------------------------+         |
++-------------------------------+--------------------------------------+
+                                |
+                                v
++----------------------------------------------------------------------+
+|                   SEMANTIC LOSS LAYER                               |
+|                                                                      |
+|   L  = -log SUM_{e* in E*}  P(e* | neural_probs)                   |
+|   dL/d_logit_k  =  P(k | img) - T(k | abduction)                  |
+|   T(k) = SUM_{e*: k in e*} w(e*) * 1[e* contains k]               |
++-------------------------------+--------------------------------------+
+                                |
+                                v
++----------------------------------------------------------------------+
+|                    EVALUATION LAYER                                 |
+|   - Per-class accuracy (digits + operators separately)               |
+|   - Expression accuracy (full d op d correct?)                      |
+|   - Result accuracy (arithmetic output correct?)                    |
+|   - Abduction rate & explanation quality                            |
+|   - NGA vs. WMC ablation                                            |
+|   - Calibration: ECE + reliability diagrams                         |
++----------------------------------------------------------------------+
+```
 
-### Symbolic Reasoning Layer
-- **`src/symbolic/knowledge_base.py`**: ASP-style Datalog knowledge base with arithmetic rules
-  - Digits, operators, valid expressions, arithmetic results, constraints
-  - `deduce()`: forward evaluation → proof traces
-  - `abduce()`: backward enumeration → all KB-consistent explanations
-  
-- **`src/symbolic/constraints.py`**: Structured constraint registry with Python pre-checks
-  - `no_division_by_zero`, `valid_digit_range`, `valid_operator`
-  
-- **`src/symbolic/deduction.py`**: 4-stage pipeline
-  - Structural check → Type check → Python constraints → ASP query
-  - Returns full derivation trace
-  
-- **`src/symbolic/abduction.py`**: Explains invalid predictions
-  - Scores explanations by `log P(symbols | neural_probs)`
-  - Returns ranked list with plausibility scores
-  
-- **`src/symbolic/symbolic_interface.py`**: Clean module contract
-  - `symbolic_deduction()` and `symbolic_abduction()` API
+### Component Details
 
-### Integration Layer
-- **`src/integration/semantic_loss.py`**: Weighted Model Counting (WMC) via d-DNNF
-  - Compiles valid KB models to arithmetic circuits
-  - Returns semantic loss = `-log(WMC)` and backprop gradients
-  - Two strategies: exact WMC or NGA (top-1)
+**Perception Layer** (`src/neural/`)
+- `cnn.py`: Base CNN architecture for digit recognition
+- `digit_recognizer.py`: 10-class softmax with temperature scaling
+- `neural_interface.py`: Exposes `neural_deduction()` and `neural_induction()`
 
-- **`src/integration/training_loop.py`**: Closed-loop training
-  - Neural deduction → symbolic reasoning → semantic loss → gradient flow
+**Symbolic Reasoning Layer** (`src/symbolic/`)
+- `knowledge_base.py`: ASP/Datalog KB with arithmetic rules, `deduce()` and `abduce()`
+- `constraints.py`: Constraint registry with Python pre-checks
+- `deduction.py`: 4-stage pipeline (structural → type → Python → ASP query)
+- `abduction.py`: Backward inference with probability scoring
+- `symbolic_interface.py`: Clean module interface contract
 
-### Evaluation & Monitoring
-- **`src/evaluation/metrics.py`**: Full evaluation suite
-  - Per-class accuracy (digits 0-9 + operators separately)
-  - Expression-level accuracy (full `d op d` correct?)
-  - Result accuracy (arithmetic output correct?)
-  - Calibration metrics (ECE, reliability diagrams)
-  - Confusion matrices with precision/recall/F1
+**Integration Layer** (`src/integration/`)
+- `semantic_loss.py`: Weighted Model Counting via d-DNNF circuits, exact WMC/NGA modes
+- `training_loop.py`: Closed-loop training with neural-symbolic coupling
 
-- **`src/evaluation/ablation_studies.py`**: Ablation framework
-  - Pure Neural vs. NGA vs. WMC comparison
-  - Same initialization, side-by-side metrics
-
-- **`src/utils/gradient_monitor.py`**: Gradient flow verification
-  - Weights snapshots before/after training
-  - Null gradient and exploding/vanishing detection
-  - Full gradient report with safety checks
+**Evaluation & Monitoring** (`src/evaluation/`, `src/utils/`)
+- `metrics.py`: Per-class, expression, result accuracy; calibration; confusion matrices
+- `ablation_studies.py`: NGA vs. WMC vs. pure neural comparison
+- `gradient_monitor.py`: Weight snapshots, gradient norm logging, sanity checks
 
 ## Metrics and Evaluation
 
