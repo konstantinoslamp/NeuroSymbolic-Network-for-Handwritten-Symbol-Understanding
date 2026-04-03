@@ -89,25 +89,85 @@ pytest tests/
 
 ## Architecture Overview
 
-The architecture of the neuro-symbolic system consists of two main components:
+The neurosymbolic system implements the compositional interface pattern from **Tsamoura et al. (AAAI 2021)**, with four core modules:
 
-- **Neural Component:** Implemented in `src/neural/model.py`, this component uses a multi-layer perceptron (MLP) to perform tasks such as classification and regression.
+### Neural Layer
+- **`src/neural/cnn.py`** & **`digit_recognizer.py`**: CNN-based perception, outputs softmax probabilities P(symbol | image)
+- **`neural_interface.py`**: Exposes `neural_deduction()` (forward pass) and `neural_induction()` (gradient updates)
 
-- **Symbolic Component:** Implemented in `src/symbolic/engine.py`, this component handles symbolic reasoning, allowing the system to parse rules and perform logical reasoning based on the data.
+### Symbolic Reasoning Layer
+- **`src/symbolic/knowledge_base.py`**: ASP-style Datalog knowledge base with arithmetic rules
+  - Digits, operators, valid expressions, arithmetic results, constraints
+  - `deduce()`: forward evaluation → proof traces
+  - `abduce()`: backward enumeration → all KB-consistent explanations
+  
+- **`src/symbolic/constraints.py`**: Structured constraint registry with Python pre-checks
+  - `no_division_by_zero`, `valid_digit_range`, `valid_operator`
+  
+- **`src/symbolic/deduction.py`**: 4-stage pipeline
+  - Structural check → Type check → Python constraints → ASP query
+  - Returns full derivation trace
+  
+- **`src/symbolic/abduction.py`**: Explains invalid predictions
+  - Scores explanations by `log P(symbols | neural_probs)`
+  - Returns ranked list with plausibility scores
+  
+- **`src/symbolic/symbolic_interface.py`**: Clean module contract
+  - `symbolic_deduction()` and `symbolic_abduction()` API
 
-## Metrics and Roadmap
+### Integration Layer
+- **`src/integration/semantic_loss.py`**: Weighted Model Counting (WMC) via d-DNNF
+  - Compiles valid KB models to arithmetic circuits
+  - Returns semantic loss = `-log(WMC)` and backprop gradients
+  - Two strategies: exact WMC or NGA (top-1)
 
-The project aims to achieve the following metrics:
+- **`src/integration/training_loop.py`**: Closed-loop training
+  - Neural deduction → symbolic reasoning → semantic loss → gradient flow
 
-- Accuracy of the neural model
-- Efficiency of the symbolic reasoning engine
-- Integration performance between neural and symbolic components
+### Evaluation & Monitoring
+- **`src/evaluation/metrics.py`**: Full evaluation suite
+  - Per-class accuracy (digits 0-9 + operators separately)
+  - Expression-level accuracy (full `d op d` correct?)
+  - Result accuracy (arithmetic output correct?)
+  - Calibration metrics (ECE, reliability diagrams)
+  - Confusion matrices with precision/recall/F1
 
-Future enhancements may include:
+- **`src/evaluation/ablation_studies.py`**: Ablation framework
+  - Pure Neural vs. NGA vs. WMC comparison
+  - Same initialization, side-by-side metrics
 
-- Expanding the dataset generation capabilities
-- Improving the neural model architecture
-- Enhancing the symbolic reasoning algorithms
+- **`src/utils/gradient_monitor.py`**: Gradient flow verification
+  - Weights snapshots before/after training
+  - Null gradient and exploding/vanishing detection
+  - Full gradient report with safety checks
+
+## Metrics and Evaluation
+
+The system is evaluated on:
+
+- **Per-Class Accuracy**: Separate metrics for digits and operators
+- **Expression Accuracy**: Full expression recognition (3-token: `digit op digit`)
+- **Result Accuracy**: Arithmetic correctness (e.g., 3+7=10)
+- **Abduction Rate**: Percentage of examples requiring symbolic correction
+- **Calibration (ECE)**: Neural confidence alignment with actual accuracy
+- **Ablation**: NGA vs. WMC vs. pure neural baselines
+
+## Recent Changes (Phase 1)
+
+✅ **Symbolic Engine**: Replaced Python conditionals with real Datalog/ASP-style knowledge base
+✅ **Semantic Loss**: Implemented exact WMC via d-DNNF arithmetic circuits
+✅ **Evaluation Suite**: Full metrics, ablations, confusion matrices, calibration
+✅ **Gradient Monitoring**: Weight change tracking, gradient norm logging, sanity checks
+✅ **Training Integration**: Closed-loop neurosymbolic trainer with semantic loss
+
+## Next Roadmap
+
+- [ ] **MATH(n)**: Scale to variable-length expressions (length 5, 7, ...)
+- [ ] **Abduction Efficiency**: Replace brute-force with constraint propagation (AC-3/SAT)
+- [ ] **Separate Operator CNN**: Dedicated recognizer for operators vs. digits
+- [ ] **PATH(n) Task**: Implement graph pathfinding to demonstrate compositionality
+- [ ] **Rule Learning**: Inductive Logic Programming to learn symbolic rules from data
+- [ ] **Counterfactual Explanations**: Leverage abduction for XAI
 
 ## Contributing
 
