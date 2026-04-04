@@ -81,3 +81,235 @@
   src/neural/train_neurosymbolic.py (ενημερώθηκε)
   Μετά την εκπαίδευση εκτελούνται: sanity checks κλίσεων, gradient flow report,
   και πλήρης αξιολόγηση μέσω EvaluationSuite σε test dataset 500 δειγμάτων.
+
+  ============================================================
+  P2.1 - Κλιμάκωση σε MATH(n) - Εκφράσεις μεταβλητού μήκους
+  ============================================================
+
+  src/neural/lstm_recognizer.py (νέο αρχείο)
+  LSTMCell: κελί LSTM σε καθαρό numpy με forget/input/output gates και πλήρες backpropagation.
+  LSTMRecognizer: ακολουθιακός αναγνωριστής που χρησιμοποιεί κοινό CNN encoder → LSTM → ταξινομητή
+  ανά timestep. Χειρίζεται εκφράσεις MATH(3), MATH(5), MATH(7) με μεταβλητό μήκος ακολουθίας.
+  Υλοποιεί πλήρες BPTT (Backpropagation Through Time) μέσω του LSTM.
+
+  src/symbolic/expression_parser.py (νέο αρχείο)
+  ASTNode/NumberNode/BinOpNode: αναπαράσταση αφηρημένου συντακτικού δέντρου (AST).
+  ExpressionParser: αναδρομικός parser τύπου Pratt/precedence-climbing που σέβεται
+  την προτεραιότητα τελεστών (× και ÷ πριν από + και -).
+  MathNDeductionEngine: forward reasoning για εκφράσεις μεταβλητού μήκους μέσω AST.
+  MathNAbductionEngine: backward reasoning με beam search - σταθεροποίηση τελεστών
+  και αναζήτηση ψηφίων μέσω περιορισμένης απαρίθμησης.
+  generate_math_n_expression(): βοηθητική συνάρτηση παραγωγής τυχαίων εκφράσεων MATH(n).
+
+  src/data/expression_dataset.py (ενημερώθηκε)
+  Νέα παράμετρος expression_length (3, 5, 7) για παραγωγή MATH(n) datasets.
+  _generate_variable_length(): παραγωγή εκφράσεων μήκους 5 και 7 με σωστή αξιολόγηση
+  προτεραιότητας μέσω ExpressionParser. Υποστήριξη invalid εκφράσεων για κάθε μήκος.
+
+  src/symbolic/symbolic_interface.py (ενημερώθηκε)
+  MathNSymbolicModule: νέο symbolic module για μεταβλητού μήκους εκφράσεις. Για μήκος 3
+  αναθέτει στο DatalogArithmeticModule, για μήκος 5+ χρησιμοποιεί MathNDeductionEngine
+  και MathNAbductionEngine.
+
+  ============================================================
+  P2.2 - Υλοποίηση εργασίας PATH(n)
+  ============================================================
+
+  src/symbolic/graph_reasoning.py (νέο αρχείο)
+  GraphKnowledgeBase: βάση γνώσης Datalog για γράφους μέσω clingo. Κωδικοποιεί
+  κανόνες προσβασιμότητας: reachable(X,Y) :- edge(X,Y) και
+  reachable(X,Z) :- edge(X,Y), reachable(Y,Z). Υποστηρίζει check_path(),
+  get_all_reachable(), find_shortest_path() (BFS), abduce_missing_edges().
+
+  PathSymbolicModule: symbolic module για PATH(n) με ίδια διεπαφή (SymbolicModule)
+  όπως το αριθμητικό module, αποδεικνύοντας τη συνθετικότητα του framework.
+  symbolic_deduction(): ελέγχει αν υπάρχει μονοπάτι μέσω Datalog.
+  symbolic_abduction(): βρίσκει διορθώσεις κόμβων που επιτυγχάνουν επιθυμητή προσβασιμότητα.
+
+  PathDataset: γεννήτρια dataset για PATH(n) με τυχαίους κατευθυνόμενους γράφους,
+  συνθετικές εικόνες κόμβων 28×28, και δυαδικές ετικέτες (υπάρχει/δεν υπάρχει μονοπάτι).
+
+  ============================================================
+  P2.3 - Ξεχωριστός Αναγνωριστής Τελεστών
+  ============================================================
+
+  src/neural/operator_recognizer.py (αντικαταστάθηκε πλήρως)
+  OperatorCNN: εξειδικευμένο CNN 4 κλάσεων για τελεστές (+,-,×,÷) με αρχιτεκτονική
+  Conv(1→16, 3×3) → ReLU → MaxPool → Dense(→64) → ReLU → Dense(→4). Ξεχωριστό
+  από το digit CNN γιατί οι τελεστές έχουν θεμελιωδώς διαφορετικά οπτικά χαρακτηριστικά.
+
+  OperatorRecognizer: NeuralModule υλοποίηση που αντιστοιχίζει τις 4 τοπικές κλάσεις
+  στον καθολικό χώρο 14 κλάσεων (θέσεις 10-13). Υποστηρίζει train_with_gradient()
+  για ενσωμάτωση semantic loss.
+
+  SplitRecognizer: ensemble module που δρομολογεί θέσεις ψηφίων στο DigitRecognizer
+  (10 κλάσεις) και θέσεις τελεστών στο OperatorRecognizer (4 κλάσεις). Τα αποτελέσματα
+  συγχωνεύονται σε ενιαίο χώρο πιθανοτήτων 14 κλάσεων. Οι κλίσεις δρομολογούνται
+  αντίστοιχα στα σωστά δίκτυα κατά το backpropagation.
+
+  ============================================================
+  P2.4 - Αντικατάσταση brute-force abduction με Constraint Propagation
+  ============================================================
+
+  src/symbolic/constraint_propagation.py (νέο αρχείο)
+  Variable/BinaryConstraint: αναπαράσταση μεταβλητών και δυαδικών περιορισμών CSP.
+
+  AC3: αλγόριθμος Arc Consistency 3 για κλάδεμα πεδίων τιμών. Αφαιρεί τιμές
+  που δεν μπορούν να συμμετέχουν σε καμία συνεπή ανάθεση. Πολυπλοκότητα O(ed³)
+  αντί O(k^n) brute-force.
+
+  DPLL: SAT-based backtracking solver με forward checking, MRV heuristic
+  (πιο περιορισμένη μεταβλητή πρώτα), και constraint propagation σε κάθε βήμα.
+
+  ConstraintPropagationAbduction: μηχανή abduction που χρησιμοποιεί AC-3 + DPLL.
+  abduce_length3(): για MATH(3) δημιουργεί CSP με 3 μεταβλητές (d1, op, d2),
+  αριθμητικούς περιορισμούς, κλαδεύει μέσω AC-3 και λύνει μέσω DPLL.
+  abduce_length_n(): για MATH(5/7) με ιεραρχική constraint propagation.
+  Υποστηρίζει κλάδεμα βάσει νευρωνικών πιθανοτήτων (αφαίρεση απίθανων τιμών).
+
+  SmartAbductionEngine: drop-in αντικατάσταση του AbductionEngine. Επιλέγει
+  αυτόματα τη βέλτιστη στρατηγική ανάλογα με το μήκος έκφρασης.
+
+  ============================================================
+  P3.1 - Εκμάθηση Συμβολικών Κανόνων (Differentiable ILP)
+  ============================================================
+
+  src/symbolic/differentiable_ilp.py (νέο αρχείο)
+  RuleTemplate: υποψήφιοι κανόνες Horn clause με εκπαιδεύσιμο βάρος θ.
+  Η εμπιστοσύνη κάθε κανόνα υπολογίζεται ως σ(θ) (sigmoid). Περιλαμβάνει
+  σωστούς κανόνες (add, sub, mul, div) και distractors (wrong_mul_as_add,
+  wrong_zero, wrong_mod, wrong_max κ.λπ.) για να αποδειχθεί η ικανότητα μάθησης.
+
+  DifferentiableForwardChainer: μαλακό forward reasoning — υπολογίζει σταθμισμένο
+  αποτέλεσμα μέσω σ(θ_r) × eval_r(d1,op,d2) / Σσ(θ_r). Πλήρως παραγωγίσιμο
+  ως προς τα βάρη κανόνων, επιτρέποντας gradient-based μάθηση.
+
+  DifferentiableILP: πλήρες σύστημα μάθησης κανόνων. train(): εκπαιδεύει
+  βάρη κανόνων μέσω gradient descent σε (d1, op, d2, result) παραδείγματα.
+  extract_learned_rules(): εξάγει κανόνες υψηλής εμπιστοσύνης (>0.7).
+  extract_asp_program(): μετατρέπει μαθημένους κανόνες σε ASP πρόγραμμα για clingo.
+  generate_training_data(): παράγει συνθετικά παραδείγματα εκπαίδευσης.
+
+  LearnableKnowledgeBase: βάση γνώσης που συνδυάζει hardcoded domain facts
+  με μαθημένους κανόνες. Χρησιμοποιεί dILP για deduce() με fallback στο
+  αρχικό clingo KB.
+
+  ============================================================
+  P3.2 - Ποσοτικοποίηση Αβεβαιότητας (Uncertainty Quantification)
+  ============================================================
+
+  src/neural/uncertainty.py (νέο αρχείο)
+  TemperatureScaling (Guo et al. 2017): μετα-βαθμονόμηση μέσω μοναδικής
+  παραμέτρου T. fit(): βρίσκει βέλτιστο T μέσω grid search σε validation set
+  (ελαχιστοποίηση NLL). calibrate(): εφαρμόζει softmax(logits/T) για
+  βαθμονομημένες πιθανότητες. T>1 μαλακώνει κατανομή (μειώνει υπερβολική
+  εμπιστοσύνη), T<1 οξύνει.
+
+  MCDropout: Monte Carlo Dropout για εκτίμηση επιστημικής αβεβαιότητας.
+  predict_with_uncertainty(): εκτελεί T στοχαστικά forward passes με dropout
+  ενεργό κατά inference. Υπολογίζει: mean_probs (βελτιωμένη πρόβλεψη),
+  std_probs (αβεβαιότητα ανά κλάση), predictive_entropy H[p(y|x)],
+  mutual_information (επιστημική αβεβαιότητα).
+
+  CalibratedNeuralModule: wrapper που συνδυάζει temperature scaling +
+  MC Dropout. calibrate(): βαθμονομεί σε validation set και εμφανίζει
+  ECE πριν/μετά. predict_calibrated(): forward pass με βαθμονομημένες
+  πιθανότητες. predict_with_uncertainty(): πλήρης αβεβαιότητα + βαθμονόμηση.
+
+  ============================================================
+  P3.3 - Αντιπραγματικές Εξηγήσεις μέσω Abduction (Counterfactuals)
+  ============================================================
+
+  src/symbolic/counterfactual.py (νέο αρχείο)
+  CounterfactualExplanation: αναπαράσταση μίας αντιπραγματικής εξήγησης.
+  to_natural_language(): παράγει ανθρώπινα αναγνώσιμη εξήγηση, π.χ.
+  "Αν το δεύτερο ψηφίο ήταν 5 αντί 6, τότε 3 + 5 = 8".
+  to_formal(): τυπική λογική αναπαράσταση CF: {pos_2: 6->5} |- result = 8.
+  Υπολογίζει changed_positions, num_changes, is_minimal.
+
+  CounterfactualGenerator: παράγει αντιπραγματικές εξηγήσεις μέσω
+  symbolic abduction. explain(): βρίσκει ΟΛΕΣ τις έγκυρες διορθώσεις,
+  τις ταξινομεί κατά ελαχιστικότητα (λιγότερες αλλαγές) και νευρωνική
+  αληθοφάνεια. explain_batch(): εξήγηση για ολόκληρο batch.
+
+  CounterfactualAnalyzer: ανάλυση αντιπραγματικών σε ολόκληρο dataset.
+  Εντοπίζει: πιο ευάλωτη θέση (most_corrected_position), κορυφαίες
+  συγχύσεις συμβόλων (top_confusions), ποσοστό σφαλμάτων ανά τελεστή.
+  print_report(): εκτυπώνει πλήρη αναφορά σχημάτων σφαλμάτων.
+
+  ============================================================
+  STEP 2 - Evolvable Policies (Thoma, Vassiliades & Michael 2026)
+  Νευρο-Συμβολική Ενσωμάτωση με Εξελισσόμενες Πολιτικές
+  ============================================================
+
+  src/evolvable/__init__.py (νέο πακέτο)
+  Πακέτο για το framework Evolvable Policies. Εξάγει όλες τις κλάσεις
+  και συναρτήσεις του framework.
+
+  src/evolvable/machine_coaching.py (νέο αρχείο)
+  Μηχανή Machine Coaching (MC) — Προτασιακές κανόνες με προτεραιότητα.
+  Literal: θετικό ή αρνητικό άτομο (π.χ. a1 ή -a1).
+  Rule: σώμα (σύζευξη literals) → κεφαλή (h ή -h), is_triggered().
+  Policy: ταξινομημένη ακολουθία κανόνων, ο τελευταίος ενεργοποιημένος κερδίζει.
+  deduce(): forward reasoning — εφαρμόζει πολιτική σε context, επιστρέφει h/-h/abstain.
+  abduce(): backward reasoning — βρίσκει contexts που παράγουν δεδομένη απόφαση.
+  PolicyGenerator: παραγωγή τυχαίων πολιτικών-στόχων (3-7 κανόνες, τυχαία σώματα/κεφαλές).
+  MCSymbolicModule: wrapper με διεπαφή SymbolicModule (deduce/abduce/induce).
+
+  src/evolvable/translator.py (νέο αρχείο)
+  Μεταφραστής μεταξύ νευρωνικών και συμβολικών αναπαραστάσεων.
+  Κάθε άτομο a_i αντιστοιχεί σε 2 νευρώνες εξόδου CNN: P(θετικό), P(αρνητικό).
+  Σύμβαση MNIST: ψηφίο 1 = θετικό άτομο, ψηφίο 2 = αρνητικό άτομο.
+  neural_to_symbolic(): μετατρέπει ενεργοποιήσεις CNN σε τιμές ατόμων.
+  symbolic_to_neural(): μετατρέπει αναθέσεις ατόμων σε νευρωνικούς στόχους.
+  compute_wmc(): Weighted Model Count μέσω abductive proofs.
+  compute_semantic_loss(): -log(WMC) με κλίση μέσω softmax backward.
+
+  src/evolvable/organism.py (νέο αρχείο)
+  NeSy Organism — Εκτεταμένη αρχιτεκτονική NEUROLOG με induce().
+  Κάθε οργανισμός: CNN + MC Policy + Translator.
+  deduce(): εικόνες → CNN → Translator → Policy → απόφαση (h/-h/abstain).
+  train_step(): εκπαίδευση CNN μέσω abductive feedback και semantic loss.
+  train_epoch(): πλήρης εποχή εκπαίδευσης πάνω σε dataset.
+  evaluate(): αξιολόγηση σε dataset (correct/wrong/abstain).
+  compute_relative_fitness(): πίνακας βαθμολόγησης σε σχέση με γονέα
+  (correct→wrong: -2, wrong→correct: +2, κ.λπ.).
+  get_weights/set_weights(): σειριοποίηση βαρών CNN για κληρονομικότητα.
+  copy_organism(): βαθύ αντίγραφο για παραγωγή απογόνων.
+
+  src/evolvable/evolution.py (νέο αρχείο)
+  Εξελικτικός αλγόριθμος για NeSy οργανισμούς.
+  Συμβολικές μεταλλάξεις:
+    S0: κλωνοποίηση (πολιτική αμετάβλητη).
+    S+: προσθήκη τυχαίου κανόνα (αξιοποιεί elaboration tolerance MC).
+    S-: απλοποίηση (αφαίρεση κανόνα ή literal από σώμα κανόνα).
+  Νευρωνικές μεταλλάξεις:
+    Npw: κληρονομικότητα βαρών γονέα (διατήρηση μαθημένων χαρακτηριστικών).
+    Nrw: τυχαία αρχικοποίηση βαρών (καθαρή εκκίνηση).
+  generate_offspring(): δημιουργεί 6 απογόνους (3 συμβολικές × 2 νευρωνικές).
+  select_next_parent(): μηχανισμός επιλογής 3 ομάδων:
+    beneficial (fitness>0): fitness-proportionate selection.
+    neutral (fitness=0): uniform random.
+    detrimental (fitness<0): κρατάμε τον τρέχοντα γονέα.
+  EvolutionaryEngine: πλήρης εξελικτικός βρόχος με εκπαίδευση, αξιολόγηση,
+  επιλογή, early stopping, και καταγραφή lineage.
+
+  src/evolvable/dataset.py (νέο αρχείο)
+  Παραγωγή datasets από κρυφές πολιτικές-στόχους.
+  load_mnist_subset(): φόρτωση ψηφίων MNIST 1 και 2 (ή συνθετικών εικόνων).
+  EvolvableDataset: κάθε δείγμα = ακολουθία εικόνων MNIST (1 ανά άτομο) +
+  ετικέτα από πολιτική-στόχο. Τυχαία contexts, ψηφίο 1→θετικό, ψηφίο 2→αρνητικό.
+  generate(): παραγωγή N δειγμάτων, απόρριψη abstentions.
+  generate_splits(): διαχωρισμός σε train/val/test.
+  create_experiment_data(): ολοκληρωμένη δημιουργία πειράματος (τυχαία πολιτική + dataset).
+
+  src/evolvable/run_experiment.py (νέο αρχείο)
+  Κύριος εκτελεστής πειραμάτων Evolvable Policies.
+  run_single_experiment(): πλήρης pipeline — παραγωγή πολιτικής-στόχου →
+  δημιουργία dataset → εξελικτική διαδικασία → αποτελέσματα.
+  Καταγράφει: ισορροπία ετικετών, ιστορικό γενεών, lineage, τελική ακρίβεια.
+  run_batch_experiments(): εκτελεί πειράματα σε πολλαπλές τυχαίες πολιτικές,
+  υπολογίζει μέσους όρους και τυπικές αποκλίσεις.
+  save_results(): αποθήκευση αποτελεσμάτων σε JSON.
+  CLI: python -m src.evolvable.run_experiment με παραμέτρους
+  (--num_atoms, --num_rules, --generations, --train_epochs, κ.λπ.).

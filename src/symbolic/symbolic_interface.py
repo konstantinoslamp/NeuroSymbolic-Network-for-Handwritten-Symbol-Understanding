@@ -218,6 +218,64 @@ class DatalogArithmeticModule(SymbolicModule):
 
 
 # ---------------------------------------------------------------------------
+# MATH(n) Variable-Length Symbolic Module (P2.1)
+# ---------------------------------------------------------------------------
+
+class MathNSymbolicModule(SymbolicModule):
+    """
+    Symbolic module for variable-length arithmetic expressions (MATH(n)).
+
+    Handles expressions of length 3, 5, 7, ... with proper operator precedence.
+    Uses ExpressionParser (precedence-climbing) instead of flat evaluation.
+
+    For length-3 expressions, delegates to the original DatalogArithmeticModule
+    for full clingo-backed reasoning.
+    """
+
+    def __init__(self, expression_length: int = 3):
+        self.expression_length = expression_length
+        self._length3_module = DatalogArithmeticModule()
+
+        from src.symbolic.expression_parser import (
+            MathNDeductionEngine, MathNAbductionEngine
+        )
+        self._mathn_deduction = MathNDeductionEngine()
+        self._mathn_abduction = MathNAbductionEngine()
+
+    def symbolic_deduction(self, input_state: Dict[str, Any]) -> Dict[str, Any]:
+        symbols = input_state['symbols']
+        if len(symbols) == 3:
+            return self._length3_module.symbolic_deduction(input_state)
+        return self._mathn_deduction.run(symbols)
+
+    def symbolic_abduction(
+        self,
+        desired_output: float,
+        current_state: Dict[str, Any],
+        neural_probs: Dict[str, np.ndarray],
+    ) -> List[Any]:
+        symbols = current_state.get('symbols', [])
+        seq_len = len(symbols) if symbols else self.expression_length
+
+        if seq_len == 3 and not neural_probs:
+            return self._length3_module.symbolic_abduction(
+                desired_output, current_state, neural_probs
+            )
+
+        probs = neural_probs if neural_probs else None
+        return self._mathn_abduction.run(desired_output, probs, seq_len)
+
+    def add_constraint(self, constraint_name: str, constraint_fn):
+        self._length3_module.add_constraint(constraint_name, constraint_fn)
+
+    def get_rules(self) -> List[str]:
+        return self._length3_module.get_rules() + [
+            'operator_precedence',
+            'variable_length_parsing',
+        ]
+
+
+# ---------------------------------------------------------------------------
 # Backward-compatibility alias
 # ---------------------------------------------------------------------------
 

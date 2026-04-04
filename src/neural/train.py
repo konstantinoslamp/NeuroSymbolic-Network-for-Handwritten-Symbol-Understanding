@@ -1,4 +1,10 @@
 import numpy as np
+import sys
+import os
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(__file__))
+
 from mnist_loader import combine_datasets, get_batch
 from model import CNN
 
@@ -7,9 +13,15 @@ def train_cnn_with_operators(epochs=5, batch_size=32, learning_rate=0.01):
     
     # Step 1: Load combined dataset
     print("Loading MNIST + Operators...")
+    
+    # Use relative paths that work both locally and in Colab
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    mnist_path = os.path.join(script_dir, 'mnist.npz')
+    operator_path = os.path.join(script_dir, 'operators.npz')
+    
     x_train, y_train, x_test, y_test = combine_datasets(
-        mnist_path=r"C:\Users\konla\Desktop\PhD\mnist_data.npz",
-        operator_path=r"C:\Users\konla\Desktop\PhD\Projects\cos521\neurosymbolic_mvp\src\neural\operators.npz"
+        mnist_path=mnist_path,
+        operator_path=operator_path
     )
     
     # Step 2: Create CNN (now with 14 output classes)

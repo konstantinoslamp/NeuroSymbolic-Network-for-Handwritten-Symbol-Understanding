@@ -1,0 +1,314 @@
+PhD Research Review & Proposed Changes
+Neurosymbolic AI Project
+
+
+PART 1 - CURRENT STATE ASSESSMENT
+Architecture Summary
+The project implements a closed-loop Neuro-Symbolic training cycle for arithmetic expression recognition, directly derived from Tsamoura, Hospedales & Michael (AAAI 2021). The core loop is correct in structure:
+Neural Deduction  ->  Symbolic Deduction  ->  Symbolic Abduction  ->  Semantic Loss  ->  Neural Induction
+What Works
+Component	Status	Notes
+CNN (14-class)	Functional	Digit (0-9) + Operator (+,-,x,/)
+NeuralModule ABC	Well-designed	Clean interface contracts
+SymbolicModule ABC	Well-designed	Deduction + Abduction exposed
+NeuroSymbolicTrainer	Core loop functional	NGA + WMC strategies both present
+ExpressionDataset	Functional	MNIST + handwritten operators
+NeurosymbolicSolver (bridge)	Functional	Production-facing API
+Test coverage	Partial	Integration + symbolic tests exist
+
+Specific Technical Limitations (Critical)
+1.  Gradient Flow is Approximate and Unverified
+The semantic loss gradient is computed as delta = P(predicted) - T(abductive_target), a softmax-cross-entropy surrogate. There is no verification that this gradient is actually flowing correctly through the CNN. No gradient norm logging, no sanity checks. This is the most critical scientific failure point.
+2.  operator_recognizer.py is a Placeholder
+The system uses a single 14-class CNN for both digits and operators. operator_recognizer.py is declared as a component yet does nothing. Either implement it or remove it — the current state is architecturally dishonest.
+3.  Abduction is Brute-Force Enumeration
+The abduction algorithm exhaustively enumerates all 400 combinations (10 x 4 x 10). For expressions of length 5 or 7, the search space is combinatorially explosive. There is no pruning, constraint propagation, or SAT-backed enumeration.
+4.  Symbolic Reasoner Has No Formal Logic
+constraints.py, deduction.py, and abduction.py are all empty placeholders. The actual symbolic logic is embedded inside symbolic_interface.py as Python conditionals. This conflates interface with implementation and makes the system impossible to extend to non-arithmetic domains.
+5.  Evaluation is Non-Existent
+metrics.py and ablation_studies.py are placeholders. There are no confusion matrices, no per-class accuracy, no calibration curves, no ablation results. You cannot write a PhD paper without these.
+6.  Training Signal is Weak for Invalid Expressions
+Invalid expressions (5% of dataset) receive no gradient — the system simply skips them. Invalid inputs should trigger abduction to propose the nearest valid correction, which itself is a learning signal.
+7.  The Symbolic Module Has No Knowledge Representation
+There is no knowledge base, no rule store, no ontology. Rules are hardcoded Python booleans. The "symbolic" component is not genuinely symbolic — it is procedural logic with symbolic labels.
+PART 2 - LITERATURE ALIGNMENT
+What Tsamoura et al. (AAAI 2021) Actually Demands
+The paper's contribution is the compositional interface contract and the proof that any neural and symbolic system can be integrated if they expose four methods:
+Module	Method	Description
+Neural	neural_deduction(x) -> y_hat	Forward inference
+Neural	neural_induction(x, y) -> delta_theta	Learning / parameter update
+Symbolic	symbolic_deduction(x) -> y	Forward symbolic evaluation
+Symbolic	symbolic_abduction(y, ctx) -> X*	Inverse inference / correction
+
+Your implementation correctly instantiates this contract. However, the paper's deeper demands not yet met are:
+•	Demand 1: The symbolic module must be genuinely symbolic. The paper uses a logic programming engine, not Python conditionals.
+•	Demand 2: Abduction must return a probability-weighted distribution over explanations. True WMC requires computing P(y_hat | KB) via arithmetic circuits or a probabilistic logic program.
+•	Demand 3: The framework must generalize beyond a single task structure. The paper demonstrates compositionality on ADD2x2, MATH(n), and PATH(n).
+State-of-the-Art Directions (2024-2025)
+Direction	Key System	What It Demands
+Probabilistic symbolic reasoning	DeepProbLog	ProbLog backend; exact WMC via knowledge compilation
+Differentiable logic	Logic Tensor Networks	Fuzzy real-valued logic; fully differentiable
+Neural theorem proving	Neural LP / LEGO-Prover	Differentiable backward chaining; rule induction
+LLM + symbolic hybrid	Neuro-Symbolic CoT	LLM generates logical programs; solver executes
+Constraint learning	Semantic Loss (Xu et al. 2018)	Logical constraints compiled to circuit; exact gradient
+
+Field consensus: systems that only perform soft pseudo-symbolic reasoning (Python conditionals + log-probabilities) are not considered neurosymbolic in peer review. A real logic engine is non-negotiable.
+PART 3 - GAP ANALYSIS & RECOMMENDATIONS
+Step 1 - Blocking (Do These First)
+P1.1  Implement a Real Symbolic Reasoner
+Replace Python conditional logic with a proper rule-based engine. Minimum viable: a Datalog or Prolog interpreter (e.g., pyDatalog, kanren, or clingo for ASP). Encode arithmetic constraints as Horn clauses:
+valid_expression(D1, Op, D2) :- digit(D1), operator(Op), digit(D2).
+result(D1, plus, D2, R)      :- R is D1 + D2.
+result(D1, minus, D2, R)     :- R is D1 - D2.
+no_div_zero(_, divide, D2)   :- D2 \= 0.
+P1.2  Implement Proper WMC / Semantic Loss
+True WMC requires compiling the logical theory into an arithmetic circuit (d-DNNF) for exact computation of P(constraint satisfied | neural outputs). Use the d-DNNF approach, ProbLog's inference engine, or the semantic_loss library from Xu et al. 2018.
+P1.3  Implement Full Evaluation Suite
+•	Per-class accuracy: digits 0-9 and operators separately
+•	Expression-level accuracy: is the full d op d correct?
+•	Result-level accuracy: is the arithmetic output correct?
+•	Abduction rate: what % of steps required abduction?
+•	Calibration: ECE (Expected Calibration Error) on neural outputs
+•	Ablation: NGA vs. WMC vs. pure neural baseline
+P1.4  Verify Gradient Flow
+Add gradient norm logging. Confirm that semantic loss produces non-zero, non-exploding gradients. If the CNN is pretrained on MNIST, show that neurosymbolic training demonstrably changes its weights. Present before/after weight histograms.
+Step 2 - Required for PhD-Level Contribution
+P2.1  Scale to MATH(n) — Variable-Length Expressions
+The paper evaluates on MATH(n) — expressions of variable length. Your system is hardcoded to length 3. Extend to length 5 and 7. This requires:
+•	A recursive / sequential neural architecture (LSTM or Transformer over image sequence)
+•	A symbolic parser that handles operator precedence and parentheses
+•	Abduction over partial parse trees, not flat enumeration
+P2.2  Implement the PATH(n) Task
+The paper's third benchmark is graph pathfinding — fundamentally different from arithmetic. Implementing it demonstrates that the framework is genuinely compositional. Use BFS/DFS or Datalog reachability rules as the symbolic module.
+P2.3  Separate Operator Recognizer
+Train separate CNNs (or fine-tune separate heads on a shared backbone) for digit vs. operator recognition. Operators have very different visual statistics from digits. This is both architecturally cleaner and scientifically justified.
+P2.4  Replace Brute-Force Abduction with Constraint Propagation
+•	Arc consistency (AC-3) for constraint propagation
+•	DPLL/CDCL (SAT-based) for harder constraints
+•	ILP (Integer Linear Programming) via scipy.optimize or pulp
+This transforms abduction from O(k^n) brute force to tractable inference.
+Step 3 - Differentiating Contributions
+P3.1  Learn Symbolic Rules (Inductive Logic Programming)
+Instead of hardcoding arithmetic rules, learn them from data using ILP (e.g., ILASP, Metagol, or differentiable ILP such as dILP). This closes the loop completely — neural learns perception, symbolic learns rules, jointly trained.
+P3.2  Uncertainty Quantification
+Calibrate neural confidence estimates using temperature scaling or Monte Carlo Dropout. Feed calibrated probabilities into symbolic abduction to get meaningful P(explanation) scores.
+P3.3  Counterfactual Explanations via Abduction
+Leverage abduction for explainability: given a wrong prediction, the abductive correction is a counterfactual explanation ("the model would be correct if digit 2 were 3 instead of 5"). This provides a direct hook into the XAI literature.
+PART 4 - PROPOSED ARCHITECTURE
+Target Architecture: Compositional Neuro-Symbolic Agent v2
++----------------------------------------------------------------------+
+|                       PERCEPTION LAYER                              |
+|                                                                      |
+|   +------------------+         +------------------+                 |
+|   |  DigitCNN        |         |  OperatorCNN     |                 |
+|   |  (ResNet-9)      |         |  (ResNet-9)      |                 |
+|   |  10-class        |         |  4-class         |                 |
+|   |  Softmax + T     |         |  Softmax + T     |  T = temp scale |
+|   |  P(d | img)      |         |  P(op | img)     |                 |
+|   +--------+---------+         +---------+--------+                 |
+|            +------------------+----------+                          |
+|                               |                                     |
+|            Probabilistic Symbol Stream                              |
+|            { P(d1), P(op), P(d2) }  per image triplet              |
++-------------------------------+--------------------------------------+
+                                |
+                                v
++----------------------------------------------------------------------+
+|                  NEURAL-SYMBOLIC BRIDGE                             |
+|                                                                      |
+|  NeuralModule Interface                                              |
+|  +------------------------------------------------------------------+|
+|  | neural_deduction(images)  ->  { probs, logits, symbols }        ||
+|  | neural_induction(images, semantic_loss_grad)  ->  delta_theta   ||
+|  +------------------------------------------------------------------+|
+|                    <->  clean interface                             |
+|  SymbolicModule Interface                                            |
+|  +------------------------------------------------------------------+|
+|  | symbolic_deduction(symbols)  ->  { valid, result, proof }       ||
+|  | symbolic_abduction(target, probs)  ->  [{ e*, P(e*) }]         ||
+|  +------------------------------------------------------------------+|
++-------------------------------+--------------------------------------+
+                                |
+                                v
++----------------------------------------------------------------------+
+|                  SYMBOLIC REASONING LAYER                           |
+|                                                                      |
+|  Knowledge Base (Datalog / ASP / ProbLog)                           |
+|    digit(0..9).   operator(+,-,x,/).                                |
+|    valid_expr(D,Op,D2) :- digit(D), operator(Op), digit(D2).       |
+|    result(D1,+,D2,R)   :- R is D1 + D2.                            |
+|    no_div_zero(_,/,D2) :- D2 != 0.                                 |
+|                                                                      |
+|  +--------------------+   +--------------------------------+         |
+|  | Deduction Engine   |   | Abduction Engine               |         |
+|  | (forward eval)     |   | AC-3 / SAT / ILP               |         |
+|  | KB |- result(e)    |   | Returns: all e* s.t. result=R  |         |
+|  +--------------------+   | + P(e* | neural_probs)         |         |
+|                           +--------------------------------+         |
++-------------------------------+--------------------------------------+
+                                |
+                                v
++----------------------------------------------------------------------+
+|                   SEMANTIC LOSS LAYER                               |
+|                                                                      |
+|   L  = -log SUM_{e* in E*}  P(e* | neural_probs)                   |
+|   dL/d_logit_k  =  P(k | img) - T(k | abduction)                  |
+|   T(k) = SUM_{e*: k in e*} w(e*) * 1[e* contains k]               |
+|                                                                      |
+|   Calibration gate: ECE <= 0.05 before neurosymbolic training       |
++-------------------------------+--------------------------------------+
+                                |
+                                v
++----------------------------------------------------------------------+
+|                    EVALUATION LAYER                                 |
+|   - Per-class accuracy (digits + operators separately)               |
+|   - Expression accuracy (full d op d correct?)                      |
+|   - Result accuracy (arithmetic output correct?)                    |
+|   - Abduction rate & explanation quality                             |
+|   - NGA vs. WMC ablation                                             |
+|   - Calibration: ECE + reliability diagrams                         |
+|   - Generalization: MATH(3) -> MATH(5) -> MATH(7)                   |
++----------------------------------------------------------------------+
+Component Specifications
+Component	Recommended Implementation	Rationale
+DigitCNN	ResNet-9 or LeNet-5, pretrained on MNIST	Stronger baseline than custom 2-layer CNN
+OperatorCNN	Separate ResNet-9 fine-tuned on symbols/ data	Different visual distribution from digits
+Calibration	Temperature scaling post-training	Required for meaningful P(symbol)
+Knowledge Base	clingo (ASP) or pyDatalog	Real declarative logic, not Python conditionals
+Abduction Engine	AC-3 + backtracking, or clingo enumeration mode	Principled and scalable
+Semantic Loss	WMC log-sum-exp -> upgrade to d-DNNF or ProbLog	Move from approximate to exact inference
+Training	Adam lr=1e-3, neurosymbolic warmup after 5 MNIST-only epochs	Stable convergence
+Evaluation	Full suite as described above	Required for publication
+
+ 
+Step 1: Replicate Tsamoura et al. — You're largely THERE                                          
+  Your project already implements the core NEUROLOG architecture from Tsamoura et al. (2021):    
+  - NeuralModule with neural_deduction() / neural_induction()                                    
+  - SymbolicModule with symbolic_deduction() / symbolic_abduction()
+  - The 5-step training loop (neural deduction → symbolic deduction → abduction → semantic loss →
+   neural induction)
+  - WMC-based semantic loss via d-DNNF circuits
+  - Clingo-backed KB with real Datalog rules
+
+  This is solid. To fully claim "replicated", you'd want to run experiments end-to-end and show  
+  accuracy numbers on MNIST arithmetic expressions matching the paper's claims, but the
+  architecture is faithful.
+
+  Step 2: Replicate the Evolvable Policies paper — THIS IS THE BIG NEXT STEP
+
+  This paper (Thoma, Vassiliades & Michael, 2026) builds on top of NEUROLOG (your Step 1) with   
+  three key additions:
+
+  1. Machine Coaching (MC) semantics — Symbolic policies are prioritized rule lists (not
+  Datalog/ASP). Rules are propositional: "-p1, -p2, -p3 implies h". Later rules override earlier 
+  ones. This is fundamentally different from your current clingo-based KB.
+  2. Evolutionary learning of symbolic policies — Instead of hardcoded or differentiable rules,  
+  they use Valiant's Evolvability framework: a population of NeSy organisms, each with different 
+  symbolic policies and neural weights. They mutate (add/simplify rules) and select the fittest  
+  across generations. This is NOT gradient-based — it's evolutionary search.
+  3. The key result: Starting from empty policies + random weights, the system discovers
+  non-differentiable symbolic policies that approximate hidden target policies, reaching ~99%    
+  correct performance.
+
+  What you have vs. what you need:
+  
+
+  Your P3.1 (dILP) is related but different:
+
+  Your differentiable ILP learns rules via gradients. The Evolvable Policies paper learns rules  
+  via evolution (mutations + fitness selection), which is the whole point — they demonstrate you 
+  DON'T need differentiability. So P3.1 is complementary but doesn't replace what Step 2 needs.  
+
+  Step 3: Realistic domain + neurosymbolic coaching for user preferences
+
+  This is the novel research contribution your professor envisions. Once Step 2 works, you apply 
+  the "coaching" paradigm (evolutionary policy learning) to a real-world domain where a user's   
+  preferences are the "hidden target policy" and the system learns them through interaction. This
+   is future work that builds on Steps 1+2.
+
+  Bottom Line
+
+  You're about 60-70% of the way there. Your NEUROLOG implementation (Step 1) is solid and all   
+  the P1/P2/P3 work strengthens it. But the core of what your professor wants next (Step 2)      
+  requires building new components:
+
+  1. A Machine Coaching engine (propositional prioritized rules)
+  2. An evolutionary algorithm (populations, mutations, fitness selection)
+  3. Wiring them into your existing NEUROLOG architecture
+
+  The good news: your architecture is modular enough (abstract SymbolicModule, abstract
+  NeuralModule) that you can add MC-style policies as a new concrete implementation without      
+  breaking anything. Your WMC semantic loss works as-is since the paper uses exactly the same    
+  approach.
+
+ 
+  Step 1: Replicate Tsamoura et al. — ~90% complete                                                                                                                                               
+  What's done:                                                                                   
+  - Symbolic KB with clingo (deduce/abduce)                                                    
+  - Deduction engine (4-stage pipeline)                                                          
+  - Abduction engine with probability scoring
+  - Semantic loss via WMC (d-DNNF circuits)
+  - Training loop with gradient monitoring
+  - Full evaluation suite (per-class accuracy, ECE, confusion matrix, ablations)
+  - MATH(n) scaling (LSTM, expression parser, variable-length expressions)
+  - PATH(n) graph reasoning task
+  - Constraint propagation abduction (AC-3 + DPLL)
+  - Differentiable ILP, uncertainty quantification, counterfactuals
+
+  What's missing:
+  1. Broken tests — 4 of 6 test files fail due to stale imports (e.g., NeuralModel vs CNN,       
+  placeholder some_helper_function)
+  2. No documented end-to-end run — No saved experiment results showing the system actually      
+  trains and produces numbers (accuracy curves, ablation tables)
+  3. Experiment scripts are placeholders — experiments/baseline.py, ablations.py, comparison.py  
+  appear to be stubs
+
+  ---
+  Step 2: Evolvable Policies — ~95% code complete, 0% validated
+
+  What's done:
+  - Machine Coaching engine (Policy, Rule, Literal, deduce/abduce)
+  - NeSy Organism (CNN + Policy + Translator, train/evaluate)
+  - Evolutionary engine (S0/S+/S- symbolic mutations, Npw/Nrw neural mutations, fitness
+  selection)
+  - Translator (neural↔symbolic, WMC, semantic loss)
+  - Dataset generation from hidden target policies
+  - Experiment runner with CLI
+
+  What's missing:
+  1. No successful experiment run — The experiment runner imports fine but hasn't produced       
+  documented results
+  2. No demonstration that retraining NN recovers/exceeds performance after policy mutation —    
+  This is the core claim of the paper
+  3. Performance concerns — Pure NumPy CNN may be too slow for meaningful experiments
+
+  ---
+  Step 3: Realistic Domain + User Preferences — 0% complete
+
+  Nothing exists. This needs:
+  1. A realistic domain (e.g., meal planning, movie recommendations, email filtering, scheduling)
+  2. A user preference model (rules the system tries to learn)
+  3. An interactive coaching loop (user gives feedback → policy evolves → NN retrains)
+  4. Evaluation showing coached system learns preferences better than pure neural
+
+  ---
+  Recommended Action Plan
+
+  Phase A: Make Step 1 actually run
+
+  1. Fix broken tests (update imports)
+  2. Create a runnable end-to-end script that trains on MATH(3), logs metrics, saves results     
+  3. Produce actual numbers (accuracy tables, ablation comparison: Pure Neural vs NGA vs WMC)    
+
+  Phase B: Validate Step 2
+
+  4. Run a small evolvable policies experiment end-to-end
+  5. Show the key result: after policy mutation, retraining NN recovers lost accuracy
+  6. Log generational fitness trajectory + policy evolution
+
+  Phase C: Build Step 3
+
+  7. Pick a domain (needs discussion — what's realistic and compelling?)
+  8. Implement domain-specific symbolic rules + neural perception
+  9. Build coaching/feedback loop
+  10. Run experiments comparing coached vs uncoached

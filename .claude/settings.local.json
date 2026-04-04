@@ -10,7 +10,23 @@
       "Bash(python -c \"import clingo; print\\('clingo ok'\\)\")",
       "Bash(python -c \"import pyDatalog; print\\('pyDatalog ok'\\)\")",
       "Bash(python -c \"import kanren; print\\('kanren ok'\\)\")",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(xargs grep:*)",
+      "Bash(mkdir:*)",
+      "Bash(mv \"Neural-Symbolic_Integration_A_Compositional_Perspe.pdf\" docs/)",
+      "Bash(mv \"Neural-Symbolic_Integration_with_Evolvable_Policie.pdf\" docs/)",
+      "Bash(mv debug_import.py scripts/)",
+      "Bash(mv test_integration.py tests/)",
+      "Bash(grep -E '\\($null|tmpclaude|~\\)')",
+      "Bash(grep \"~\\\\$\")",
+      "Bash(rm -f '$null')",
+      "Bash(rm -f '$null'\\\\''')",
+      "Bash(mv dataset_preview.png docs/)",
+      "Bash(mv papers.txt docs/)",
+      "Bash(mv DATA_SETUP.md docs/)",
+      "Bash(mv INTEGRATION_COMPLETE.md docs/)",
+      "Read(//c/Users/konla/Desktop/PhD/Projects/cos521/neurosymbolic_mvp/**)",
+      "Bash(ls tests/*.py)"
     ]
   }
 }

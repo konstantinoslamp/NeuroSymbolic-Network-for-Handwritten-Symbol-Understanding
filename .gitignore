@@ -1,6 +1,14 @@
-# Claude temporary directories
+# Claude temporary directories and files
 tmpclaude-*/
 tmpclaude-*-cwd/
+tmpclaude-*
+$null
+$null'
+
+# Temporary files
+~$*
+~WRL*
+*.tmp
 
 # Python
 __pycache__/

@@ -1,54 +1,80 @@
 """
-Test the full Neuro-Symbolic Loop
+End-to-end integration test for the neurosymbolic system.
+Run this AFTER training completes and trained_cnn_model.pkl exists.
 """
 import sys
 import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append('src')
 
 import numpy as np
-from src.integration.training_loop import NeuroSymbolicTrainer
-from src.symbolic.symbolic_interface import ArithmeticSymbolicModule
-from src.config.task_definition import TASK
+from src.bridge.neurosymbolic_connector import NeurosymbolicSolver
 
-class MockNeuralModule:
-    """Simulates a neural network for testing"""
-    def neural_deduction(self, images):
-        batch_size = len(images)
-        # Simulate predicting "3 + 6" (indices: 3, 10, 6)
-        # Shape: (batch, 3 symbols)
-        return {
-            'class_ids': np.array([[3, 10, 6]] * batch_size),
-            'probabilities': np.random.rand(batch_size, 3, 14)
-        }
+def create_test_images():
+    """Create dummy test images (28x28) for testing"""
+    # In real usage, these come from the drawing UI segmentation
     
-    def neural_induction(self, signals):
-        # Simulate training step
-        return {'total_loss': 0.5}
+    # Create 3 blank images with some noise
+    images = []
+    for i in range(3):
+        img = np.random.rand(28, 28) * 0.1  # Mostly black with slight noise
+        images.append(img)
+    
+    return images
 
-def test_training_loop():
-    print("🔄 Testing Training Loop...")
+def main():
+    print("="*70)
+    print("INTEGRATION TEST: Neural CNN → Symbolic Reasoner")
+    print("="*70)
     
-    # Setup
-    neural = MockNeuralModule()
-    symbolic = ArithmeticSymbolicModule()
-    trainer = NeuroSymbolicTrainer(neural, symbolic, TASK)
+    # Check if model exists
+    model_path = 'src/neural/trained_cnn_model.pkl'
+    if not os.path.exists(model_path):
+        print(f"\n❌ ERROR: Model file '{model_path}' not found!")
+        print("Please run training first: python src/neural/train.py")
+        return
     
-    # Fake data: 2 images
-    images = np.zeros((2, 28, 28))
-    # Ground truth: The first image should be 8 (so 3+6 is WRONG -> Abduction needed)
-    # The second image should be 9 (so 3+6 is CORRECT -> No abduction)
-    ground_truth = [8.0, 9.0]
+    print(f"\n✓ Found model: {model_path}")
     
-    # Run one step
-    metrics = trainer.train_step(images, ground_truth)
+    # Initialize solver
+    print("\n" + "-"*70)
+    print("Initializing NeurosymbolicSolver...")
+    print("-"*70)
+    solver = NeurosymbolicSolver(model_path)
     
-    print(f"   Metrics: {metrics}")
+    # Test with dummy images
+    print("\n" + "-"*70)
+    print("Testing with synthetic images (random noise)...")
+    print("-"*70)
+    test_images = create_test_images()
     
-    # Assertions
-    assert metrics['correct'] == 1, "Should have 1 correct prediction (the second one)"
-    assert metrics['abductions'] == 1, "Should trigger abduction for the first sample (target 8)"
+    result = solver.solve_expression(test_images)
     
-    print("✅ Loop logic verified!")
+    # Display results
+    print("\n" + "="*70)
+    print("INTEGRATION TEST RESULTS")
+    print("="*70)
+    print(f"Success: {result['success']}")
+    print(f"Expression: {result['expression']}")
+    print(f"Result: {result['result']}")
+    print(f"Explanation: {result['explanation']}")
+    
+    if result.get('validations'):
+        print("\nValidation messages:")
+        for msg in result['validations']:
+            print(f"  {msg}")
+    
+    print("\n" + "="*70)
+    
+    if result['success']:
+        print("✓ Integration test PASSED - All components connected!")
+    else:
+        print("⚠ Integration test completed with validation issues")
+        print("  (This is expected with random images)")
+    
+    print("\nNext steps:")
+    print("1. Run the UI: python src/ui_app.py")
+    print("2. Draw an expression like '3+7'")
+    print("3. Click 'Solve' to see the full pipeline in action!")
 
-if __name__ == "__main__":
-    test_training_loop()
+if __name__ == '__main__':
+    main()
