@@ -313,3 +313,77 @@
   save_results(): αποθήκευση αποτελεσμάτων σε JSON.
   CLI: python -m src.evolvable.run_experiment με παραμέτρους
   (--num_atoms, --num_rules, --generations, --train_epochs, κ.λπ.).
+
+  ============================================================
+  2026-04-04 — Colab Notebook + Test Fixes + Experiment Scripts
+  ============================================================
+
+  train_colab.ipynb (new — repo root)
+  Google Colab notebook for running CNN training end-to-end without a local setup.
+  Cell 1: clones/pulls the GitHub repo into /content/.
+  Cell 2: installs tqdm and numpy.
+  Cell 3: downloads mnist.npz from the Keras CDN if not present.
+  Cell 4: imports CNN directly from src/neural/model.py.
+  Cell 5: training loop with dual tqdm.notebook progress bars — outer bar tracks
+  epochs (shows avg_loss + test_acc live), inner bar tracks batches (shows per-batch loss).
+  Hyperparameters (EPOCHS, BATCH_SIZE, LEARNING_RATE) are set in one cell for easy tuning.
+  Cell 6: plots training loss and test accuracy curves, saves training_curves.png.
+  Cell 7: saves trained_cnn_model.pkl and triggers a browser download via google.colab.files.
+
+  ============================================================
+  2026-04-05 — Fix Broken Tests (Blocker A)
+  ============================================================
+
+  tests/test_neural.py (rewritten)
+  The file previously imported a non-existent class NeuralModel — causing ImportError
+  on line 3. Replaced entirely with tests for the actual classes CNN and DigitRecognizer.
+  TestCNN: test_forward_shape, test_compute_loss, test_weights_change_after_training,
+  test_predict_shape, test_save_and_load_weights.
+  TestDigitRecognizer: test_neural_deduction_output_keys,
+  test_neural_deduction_probs_sum_to_one, test_get_set_parameters.
+  All 8 tests pass.
+
+  tests/test_utils.py (rewritten)
+  Previously imported some_helper_function which does not exist in src/utils/helpers.py,
+  and referenced undefined variables args and expected_result — double ImportError + NameError.
+  Replaced with TestHelpers covering the four real helpers:
+  test_log_message_runs, test_validate_input_correct_type, test_validate_input_wrong_type,
+  test_save_and_load_model. All 4 tests pass.
+
+  tests/test_data.py (fixed)
+  setUp called Dataset() with no arguments, but the class requires (num_samples, num_features).
+  Also called dataset.generate_data(num_samples=100) and dataset.extract_features() —
+  neither signature nor method exists in the actual class.
+  Fixed to use Dataset(num_samples=100, num_features=10), dataset.get_data(), and
+  dataset.generate_data() matching the real API. DataLoader tests also fixed to pass
+  the data array directly and call reset() before re-iterating. All 6 tests pass.
+
+  Total test suite: 18/18 passing after fixes.
+
+  ============================================================
+  2026-04-05 — Implement Experiment Scripts (Blocker B)
+  ============================================================
+
+  experiments/baseline.py (implemented — was 4-line stub)
+  Runs the pure neural baseline (no symbolic feedback) end-to-end.
+  Builds ExpressionDataset (train + test), configures AblationConfig with
+  use_symbolic=False and abduction_strategy='none', delegates to AblationRunner.
+  Prints per-epoch loss/accuracy and final expression + result accuracy.
+  Saves full results to JSON via --output flag.
+  CLI: python experiments/baseline.py [--epochs N] [--samples N] [--output path]
+
+  experiments/ablations.py (implemented — was 4-line stub)
+  Runs the full three-way ablation study: Pure Neural vs NGA vs WMC.
+  Overrides epochs/lr/batch_size on ABLATION_CONFIGS so a single --epochs flag
+  controls all three runs consistently. All three share the same initial weights
+  (via AblationRunner) for a fair comparison.
+  Calls AblationRunner.print_comparison() for a side-by-side table.
+  Saves full results to JSON via --output flag.
+  CLI: python experiments/ablations.py [--epochs N] [--samples N] [--output path]
+
+  experiments/comparison.py (implemented — was 4-line stub)
+  Loads a previously saved ablations JSON and prints a formatted comparison table
+  (metrics: digit accuracy, operator accuracy, expression accuracy, result accuracy,
+  ECE, abduction rate, abduction effectiveness, training time).
+  If no --results file is provided it runs ablations inline first, then prints.
+  CLI: python experiments/comparison.py [--results path] [--epochs N] [--samples N]
