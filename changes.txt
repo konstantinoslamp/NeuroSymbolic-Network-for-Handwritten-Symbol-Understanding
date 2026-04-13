@@ -387,3 +387,42 @@
   ECE, abduction rate, abduction effectiveness, training time).
   If no --results file is provided it runs ablations inline first, then prints.
   CLI: python experiments/comparison.py [--results path] [--epochs N] [--samples N]
+
+  ============================================================
+  2026-04-05 — Phase A: NEUROLOG Colab Notebook + Requirements
+  ============================================================
+
+  requirements.txt (updated)
+  Previously only had numpy and typing-extensions. Replaced with all
+  dependencies needed for the full neurosymbolic pipeline:
+  numpy>=1.21.0, clingo>=5.6.0, tqdm>=4.60.0, matplotlib>=3.5.0, Pillow>=9.0.0.
+  Required for both local runs and Colab setup.
+
+  neurolog_colab.ipynb (new — repo root)
+  Google Colab notebook for running the full NEUROLOG 3-way ablation study.
+  This is the key experiment notebook that produces Table 1 for the paper.
+  26 cells organized as:
+    - Setup: clone repo, install deps (including clingo for ASP symbolic KB)
+    - Download MNIST dataset
+    - Verify symbolic KB works (clingo deduction + abduction smoke test)
+    - Configurable hyperparameters (EPOCHS, TRAIN_SAMPLES, BATCH_SIZE, LR)
+    - Full 3-way ablation: Pure Neural vs NGA vs WMC from same initial weights
+    - Print side-by-side comparison table
+    - Plot training curves (loss + accuracy per epoch, per strategy)
+    - Plot evaluation bar chart (digit/operator/expression/result accuracy)
+    - Detailed evaluation report (per-class precision/recall/F1, ECE, confusion)
+    - Save results JSON + trigger Colab file download
+    - Paper-ready summary table with LaTeX snippet for direct inclusion
+
+  Import chain verification (all pass):
+    ExpressionDataset -> DigitRecognizer -> ArithmeticSymbolicModule ->
+    AblationRunner -> NeuroSymbolicTrainer -> SemanticLossWMC ->
+    EvaluationSuite -> KnowledgeBase (clingo)
+
+  STATUS: Phase A complete. Next step: push to GitHub, open neurolog_colab.ipynb
+  in Google Colab, run all cells, and collect the ablation results.
+  Phase B (Evolvable Policies validation) and Phase C (realistic domain) remain.
+
+
+
+

@@ -242,10 +242,10 @@ Step 1: Replicate Tsamoura et al. — You're largely THERE
   approach.
 
  
-  Step 1: Replicate Tsamoura et al. — ~90% complete                                                                                                                                               
-  What's done:                                                                                   
-  - Symbolic KB with clingo (deduce/abduce)                                                    
-  - Deduction engine (4-stage pipeline)                                                          
+  Step 1: Replicate Tsamoura et al. — ~95% complete (code done, needs Colab run)
+  What's done:
+  - Symbolic KB with clingo (deduce/abduce)
+  - Deduction engine (4-stage pipeline)
   - Abduction engine with probability scoring
   - Semantic loss via WMC (d-DNNF circuits)
   - Training loop with gradient monitoring
@@ -254,14 +254,19 @@ Step 1: Replicate Tsamoura et al. — You're largely THERE
   - PATH(n) graph reasoning task
   - Constraint propagation abduction (AC-3 + DPLL)
   - Differentiable ILP, uncertainty quantification, counterfactuals
+  - Tests fixed: 18/18 passing (2026-04-05)
+  - Experiment scripts implemented: baseline.py, ablations.py, comparison.py (2026-04-05)
+  - neurolog_colab.ipynb created: full 3-way ablation notebook for Colab (2026-04-05)
+  - requirements.txt updated with clingo + all deps (2026-04-05)
+  - Full import chain verified locally (2026-04-05)
 
-  What's missing:
-  1. Broken tests — 4 of 6 test files fail due to stale imports (e.g., NeuralModel vs CNN,       
-  placeholder some_helper_function)
-  2. No documented end-to-end run — No saved experiment results showing the system actually      
-  trains and produces numbers (accuracy curves, ablation tables)
-  3. Experiment scripts are placeholders — experiments/baseline.py, ablations.py, comparison.py  
-  appear to be stubs
+  What's missing (BLOCKERS):
+  1. MUST RUN neurolog_colab.ipynb in Google Colab and collect actual numbers
+     -> Push to GitHub first, then open in Colab, Runtime > T4 GPU, Run All
+     -> Expected output: ablation table (Pure Neural vs NGA vs WMC), training curves, JSON
+     -> This produces Table 1 for the paper
+  2. If numbers look wrong (e.g., WMC not beating pure neural), debug the semantic loss
+     gradient flow
 
   ---
   Step 2: Evolvable Policies — ~95% code complete, 0% validated
@@ -271,44 +276,188 @@ Step 1: Replicate Tsamoura et al. — You're largely THERE
   - NeSy Organism (CNN + Policy + Translator, train/evaluate)
   - Evolutionary engine (S0/S+/S- symbolic mutations, Npw/Nrw neural mutations, fitness
   selection)
-  - Translator (neural↔symbolic, WMC, semantic loss)
+  - Translator (neural<->symbolic, WMC, semantic loss)
   - Dataset generation from hidden target policies
   - Experiment runner with CLI
 
-  What's missing:
-  1. No successful experiment run — The experiment runner imports fine but hasn't produced       
-  documented results
-  2. No demonstration that retraining NN recovers/exceeds performance after policy mutation —    
-  This is the core claim of the paper
-  3. Performance concerns — Pure NumPy CNN may be too slow for meaningful experiments
+  What's missing (BLOCKERS):
+  1. Create evolvable_colab.ipynb (same pattern as neurolog_colab.ipynb)
+  2. Run experiment end-to-end: python -m src.evolvable.run_experiment
+     --num_atoms 3 --num_rules 3 --generations 10 --train_epochs 5
+  3. Demonstrate core claim: after S+/S- policy mutation, NN retrains and recovers accuracy
+  4. Log generational fitness trajectory + evolved policy text
+  5. Performance concern: pure NumPy CNN may be slow — consider small experiments first
 
   ---
   Step 3: Realistic Domain + User Preferences — 0% complete
 
   Nothing exists. This needs:
-  1. A realistic domain (e.g., meal planning, movie recommendations, email filtering, scheduling)
-  2. A user preference model (rules the system tries to learn)
-  3. An interactive coaching loop (user gives feedback → policy evolves → NN retrains)
-  4. Evaluation showing coached system learns preferences better than pure neural
+  1. Pick a domain (discuss with advisor):
+     - Option A: Meal filtering (nutritional rules)
+     - Option B: Email triage (sorting preferences)
+     - Option C: Arithmetic tutoring (reuses existing pipeline, fastest to implement)
+  2. Implement domain-specific symbolic rules + neural perception
+  3. Build coaching/feedback loop (user gives feedback -> policy evolves -> NN retrains)
+  4. Evaluation: coached system vs pure neural
 
   ---
-  Recommended Action Plan
+  Recommended Action Plan (Updated 2026-04-05)
 
-  Phase A: Make Step 1 actually run
-
-  1. Fix broken tests (update imports)
-  2. Create a runnable end-to-end script that trains on MATH(3), logs metrics, saves results     
-  3. Produce actual numbers (accuracy tables, ablation comparison: Pure Neural vs NGA vs WMC)    
+  Phase A: Make Step 1 produce results — READY TO RUN
+  [DONE] 1. Fix broken tests (18/18 passing)
+  [DONE] 2. Implement experiment scripts (baseline.py, ablations.py, comparison.py)
+  [DONE] 3. Create neurolog_colab.ipynb with full ablation pipeline
+  [DONE] 4. Update requirements.txt with clingo + all deps
+  [TODO] 5. Push to GitHub and run neurolog_colab.ipynb in Colab
+  [TODO] 6. Collect ablation results JSON + plots -> these are the paper's main results
 
   Phase B: Validate Step 2
-
-  4. Run a small evolvable policies experiment end-to-end
-  5. Show the key result: after policy mutation, retraining NN recovers lost accuracy
-  6. Log generational fitness trajectory + policy evolution
+  [TODO] 7. Create evolvable_colab.ipynb
+  [TODO] 8. Run evolvable policies experiment end-to-end
+  [TODO] 9. Document generational fitness + policy evolution
 
   Phase C: Build Step 3
-
-  7. Pick a domain (needs discussion — what's realistic and compelling?)
-  8. Implement domain-specific symbolic rules + neural perception
-  9. Build coaching/feedback loop
+  [TODO] 10. Pick a domain
+  [TODO] 11. Implement domain + coaching loop
+  [TODO] 12. Run experiments
   10. Run experiments comparing coached vs uncoached
+
+
+
+ Here's a complete picture of where things stand and exactly what to do next.
+
+  ---
+  Current State Summary                                                                                    
+  ┌──────────────────────────────┬──────────────────────────────────┬───────────────────────────────┐   
+  │             Step             │               Code               │           Validated           │   
+  ├──────────────────────────────┼──────────────────────────────────┼───────────────────────────────┤
+  │ Step 1: NEUROLOG (Tsamoura   │ ~90% — all components exist,     │ 0% — no experiment results    │   
+  │ 2021)                        │ 18/18 tests pass                 │ ever produced                 │   
+  ├──────────────────────────────┼──────────────────────────────────┼───────────────────────────────┤   
+  │ Step 2: Evolvable Policies   │ ~95% — full evolutionary engine  │ 0% — never run end-to-end     │   
+  │ (Thoma 2026)                 │ exists                           │                               │   
+  ├──────────────────────────────┼──────────────────────────────────┼───────────────────────────────┤   
+  │ Step 3: Realistic domain     │ 0%                               │ 0%                            │   
+  └──────────────────────────────┴──────────────────────────────────┴───────────────────────────────┘   
+
+  The codebase is largely built. The gap is producing actual numbers. That's what concludes the
+  research.
+
+  ---
+  PHASE A — Get Step 1 (NEUROLOG) Results
+
+  Code Changes to Make Locally (3 changes)
+
+  Change 1: Create neurolog_colab.ipynb in the repo root
+
+  The existing train_colab.ipynb only trains the bare CNN. You need a separate notebook that runs the   
+  full neurosymbolic ablation (Pure Neural vs NGA vs WMC). I need to build this — tell me and I'll      
+  create it right now. It will:
+  - Clone your repo into /content/
+  - pip install clingo numpy tqdm (clingo is required for the ASP symbolic KB)
+  - Download MNIST
+  - Run experiments/ablations.py (the 3-way comparison)
+  - Plot and save accuracy curves + ablation table
+
+  Change 2: Verify clingo is called correctly in experiments/ablations.py
+
+  The symbolic KB uses clingo as an external process. In Colab this needs to be installed via pip       
+  install clingo. Let me verify the import chain works end-to-end before you push (tell me and I'll     
+  trace it).
+
+  Change 3: Add requirements.txt with all dependencies
+
+  Currently there's no requirements.txt. Colab needs to install: numpy, clingo, tqdm, matplotlib.       
+  Without this the notebook install cell is guesswork.
+
+  Then: Push to GitHub
+
+  git add neurolog_colab.ipynb requirements.txt
+  git commit -m "Add NEUROLOG Colab notebook and requirements"
+  git push origin main
+
+  Then: Run in Colab
+
+  1. Go to https://colab.research.google.com/
+  2. File → Open notebook → GitHub tab
+  3. Paste: konstantinoslamp/NeuroSymbolic-Network-for-Handwritten-Symbol-Understanding
+  4. Open neurolog_colab.ipynb
+  5. Runtime → Change runtime type → T4 GPU
+  6. Run All Cells
+  7. Expected output: A table like this:
+  Strategy     | Digit Acc | Expr Acc | Result Acc | ECE
+  Pure Neural  |  XX%      |  XX%     |  XX%       | X.XX
+  NGA          |  XX%      |  XX%     |  XX%       | X.XX
+  WMC          |  XX%      |  XX%     |  XX%       | X.XX
+  8. Download ablation_results.json from the output (the notebook saves it)
+  9. Save this file — it's your Table 1 for the paper
+
+  ---
+  PHASE B — Validate Step 2 (Evolvable Policies)
+
+  Code Changes (2 changes)
+
+  Change 1: Create evolvable_colab.ipynb
+
+  This notebook runs src/evolvable/run_experiment.py with small parameters so it finishes in under 30   
+  minutes on Colab:
+  --num_atoms 3 --num_rules 3 --generations 10 --train_epochs 5 --population_size 6
+  It logs generational fitness, the evolving policy text, and final accuracy. The key result to
+  demonstrate: after a S+ or S- policy mutation, the NN retrains and recovers or exceeds the parent's   
+  accuracy. This is the core claim of Thoma et al. 2026.
+
+  Change 2: Sanity-check run_experiment.py imports locally
+
+  Run this locally before pushing:
+  python -c "from src.evolvable.run_experiment import run_single_experiment; print('OK')"
+  If it fails, I fix the import. Tell me the error output.
+
+  Then: Push and Run
+
+  git add evolvable_colab.ipynb
+  git commit -m "Add Evolvable Policies Colab notebook"
+  git push origin main
+
+  Open Colab, same repo, open evolvable_colab.ipynb, T4 GPU, Run All.
+
+  Expected output to capture:
+  - Generation-by-generation fitness plot
+  - The text of the final learned policy (should approximate the hidden target policy)
+  - Final test accuracy (target: ≥90%, paper claims ~99%)
+
+  ---
+  PHASE C — Step 3: Realistic Domain (Design Discussion Needed)
+
+  This is 0% and needs your input before I can build anything. The professor's vision: take the
+  Evolvable Policies framework and apply it to a domain where a user's preferences are the hidden target
+   policy.
+
+  Three realistic options — pick one:
+
+  ┌────────┬─────────────────┬───────────────────────────────┬─────────────────────────────────────┐    
+  │ Option │     Domain      │         Neural input          │       Symbolic policy learns        │    
+  ├────────┼─────────────────┼───────────────────────────────┼─────────────────────────────────────┤    
+  │ A      │ Meal filtering  │ MNIST digits represent        │ User's dietary rules (no gluten,    │    
+  │        │                 │ nutritional features          │ low carb, etc.)                     │    
+  ├────────┼─────────────────┼───────────────────────────────┼─────────────────────────────────────┤
+  │ B      │ Email triage    │ Feature vectors from text     │ User's sorting preferences (urgent  │    
+  │        │                 │                               │ / archive / reply)                  │    
+  ├────────┼─────────────────┼───────────────────────────────┼─────────────────────────────────────┤    
+  │ C      │ Arithmetic      │ Same MNIST setup you already  │ Student's correct vs incorrect      │    
+  │        │ tutoring        │ have                          │ answer patterns                     │    
+  └────────┴─────────────────┴───────────────────────────────┴─────────────────────────────────────┘    
+
+  Option C is fastest to implement since it reuses your entire existing pipeline. Options A/B are more  
+  compelling as a paper contribution.
+
+  ---
+  Immediate Next Actions (In Order)
+
+  1. Right now: Tell me to create neurolog_colab.ipynb and requirements.txt — I'll build them
+  2. Run python -c "from src.evolvable.run_experiment import run_single_experiment; print('OK')" locally
+   and paste the output here
+  3. Once both notebooks exist, commit and push
+  4. Open Colab, run Phase A notebook first — paste the ablation table back here
+  5. Run Phase B notebook — paste generational fitness numbers
+  6. Tell me which domain you want for Phase C
+
