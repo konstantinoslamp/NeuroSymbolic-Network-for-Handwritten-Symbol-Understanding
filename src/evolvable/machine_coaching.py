@@ -253,6 +253,13 @@ class PolicyGenerator:
 
         policy = Policy()
 
+        # Pre-assign heads so at least half are -h, ensuring label balance.
+        # Without this, unlucky seeds generate all-h policies → 100% positive
+        # dataset → any rule fires → trivial 1-generation "solution".
+        n_positive = num_rules // 2
+        head_signs = [True] * n_positive + [False] * (num_rules - n_positive)
+        random.shuffle(head_signs)
+
         for i in range(num_rules):
             # Random body length (1 to len(atoms)//2 + 1)
             body_len = random.randint(1, min(len(self.atoms), 4))
@@ -263,8 +270,8 @@ class PolicyGenerator:
             # Random polarity for each
             body = [Literal(a, random.choice([True, False])) for a in body_atoms]
 
-            # Random head
-            head = Literal('h', random.choice([True, False]))
+            # Head: use pre-assigned sign to guarantee balance
+            head = Literal('h', head_signs[i])
 
             rule = Rule(body, head, name=f"R{i+1}")
             policy.add_rule(rule)
