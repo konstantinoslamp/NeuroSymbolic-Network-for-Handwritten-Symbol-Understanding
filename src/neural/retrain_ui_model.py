@@ -17,7 +17,7 @@ import os
 import sys
 import numpy as np
 import torch
-from PIL import Image
+from PIL import Image, ImageDraw
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
@@ -81,21 +81,49 @@ def load_mnist():
         return None
 
 
-def load_operators_normalized():
+def generate_operators(n_per_class=1500):
     """
-    Load operators.npz and normalize to [0,1].
-    The file was saved with (x - 0.25) / 0.514 normalization applied.
-    We reverse it and clip to [0,1].
+    Generate clean operator images (28x28, white stroke on black background)
+    using PIL text rendering with multiple fonts/sizes/positions.
+    Labels: 10=+  11=-  12=x  13=/
     """
-    path = os.path.join(SCRIPT_DIR, 'operators.npz')
-    data = np.load(path)
-    imgs = data['images'].astype(np.float32)   # (N, 1, 28, 28) in [-0.49, 1.46]
-    labels = data['labels']
+    symbols = {10: '+', 11: '-', 12: 'x', 13: '/'}
+    imgs, labels = [], []
 
-    # Reverse the per-dataset normalization and clip to [0,1]
-    imgs = imgs * 0.514 + 0.250
-    imgs = np.clip(imgs, 0.0, 1.0)
-    print(f'Operators loaded: {len(imgs)} samples, range [{imgs.min():.2f}, {imgs.max():.2f}]')
+    for cls, sym in symbols.items():
+        for _ in range(n_per_class):
+            # Random font size so strokes vary in thickness
+            size = np.random.randint(16, 26)
+            # Create black background
+            img = Image.new('L', (28, 28), 0)
+            draw_obj = ImageDraw.Draw(img)
+            # Random offset so symbol isn't always perfectly centered
+            ox = np.random.randint(-3, 4)
+            oy = np.random.randint(-3, 4)
+            cx, cy = 14 + ox, 14 + oy
+
+            if sym == '+':
+                hw = size // 2
+                draw_obj.line([(cx - hw, cy), (cx + hw, cy)], fill=255, width=3)
+                draw_obj.line([(cx, cy - hw), (cx, cy + hw)], fill=255, width=3)
+            elif sym == '-':
+                hw = size // 2
+                draw_obj.line([(cx - hw, cy), (cx + hw, cy)], fill=255, width=3)
+            elif sym == 'x':
+                hw = size // 2 - 1
+                draw_obj.line([(cx - hw, cy - hw), (cx + hw, cy + hw)], fill=255, width=3)
+                draw_obj.line([(cx + hw, cy - hw), (cx - hw, cy + hw)], fill=255, width=3)
+            elif sym == '/':
+                hw = size // 2
+                draw_obj.line([(cx - hw, cy + hw), (cx + hw, cy - hw)], fill=255, width=3)
+
+            arr = np.array(img).astype(np.float32) / 255.0  # [0,1], white=stroke
+            imgs.append(arr[np.newaxis])  # (1, 28, 28)
+            labels.append(cls)
+
+    imgs = np.array(imgs, dtype=np.float32)
+    labels = np.array(labels)
+    print(f'Generated {len(imgs)} operator images, range [{imgs.min():.2f}, {imgs.max():.2f}]')
     return imgs, labels
 
 
@@ -134,8 +162,8 @@ def train(epochs=10, batch_size=64, lr=1e-3):
         sys.exit(1)
     x_tr_m, y_tr_m, x_te_m, y_te_m = mnist
 
-    x_ops, y_ops = load_operators_normalized()
-    x_ops_aug, y_ops_aug = augment_images(x_ops, y_ops, factor=8)
+    x_ops, y_ops = generate_operators(n_per_class=1500)
+    x_ops_aug, y_ops_aug = augment_images(x_ops, y_ops, factor=4)
 
     # Augment MNIST digits too (shifts/zoom help with hand-drawn variation)
     x_tr_m, y_tr_m = augment_images(x_tr_m, y_tr_m, factor=2)
