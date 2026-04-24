@@ -204,18 +204,33 @@ class DrawingApp:
             bottom = min(char_img.shape[0], nonzero_rows[-1] + 5)
             char_img = char_img[top:bottom, :]
 
-            # Pad to square then resize to 28x28
+            # Pad to square then resize to 20x20 (leave room for centering)
             char_pil = Image.fromarray(char_img)
             w, h = char_pil.size
             max_dim = max(w, h, 1)
             square_img = Image.new('L', (max_dim, max_dim), 255)
             square_img.paste(char_pil, ((max_dim - w) // 2, (max_dim - h) // 2))
-            resized = square_img.resize((28, 28), Image.Resampling.LANCZOS)
+            resized = square_img.resize((20, 20), Image.Resampling.LANCZOS)
 
-            char_array = np.array(resized).astype(np.float32) / 255.0
-            char_array = 1.0 - char_array  # invert: MNIST is white-on-black
+            # Invert: MNIST is white-on-black
+            char_array = 1.0 - np.array(resized).astype(np.float32) / 255.0
 
-            characters.append((start_x, char_array))
+            # Center of mass centering (matches MNIST preprocessing)
+            # Find centroid of ink pixels and shift to image center
+            total_ink = char_array.sum()
+            if total_ink > 0:
+                ys, xs = np.mgrid[0:20, 0:20]
+                cx = (xs * char_array).sum() / total_ink  # centroid x
+                cy = (ys * char_array).sum() / total_ink  # centroid y
+                shift_x = int(round(10 - cx))  # shift to center (10 = 20/2)
+                shift_y = int(round(10 - cy))
+                char_array = np.roll(np.roll(char_array, shift_y, axis=0), shift_x, axis=1)
+
+            # Place 20x20 centered content into 28x28 canvas (4px padding each side)
+            final = np.zeros((28, 28), dtype=np.float32)
+            final[4:24, 4:24] = char_array
+
+            characters.append((start_x, final))
 
         return characters
     

@@ -17,6 +17,7 @@ import os
 import sys
 import numpy as np
 import torch
+from PIL import Image
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
@@ -98,24 +99,32 @@ def load_operators_normalized():
     return imgs, labels
 
 
-def augment_operators(imgs, labels, factor=5):
+def augment_images(imgs, labels, factor=3):
     """
-    Augment operator images with random shifts and noise so the model
-    sees variety similar to hand-drawn input.
+    Augment images with random shifts, scaling, noise and rotation-like shear.
+    Applied to both digits and operators so the model handles hand-drawn variation.
     """
     aug_imgs, aug_labels = [], []
     for img, lbl in zip(imgs, labels):
         aug_imgs.append(img)
         aug_labels.append(lbl)
         for _ in range(factor - 1):
-            # Random pixel shift (±2px)
-            shift_x = np.random.randint(-2, 3)
-            shift_y = np.random.randint(-2, 3)
-            shifted = np.roll(np.roll(img, shift_x, axis=2), shift_y, axis=1)
+            a = img[0].copy()  # (28, 28)
+            # Random shift ±3px
+            sx = np.random.randint(-3, 4)
+            sy = np.random.randint(-3, 4)
+            a = np.roll(np.roll(a, sy, axis=0), sx, axis=1)
+            # Random zoom: crop 22-28px region and resize back to 28x28
+            crop = np.random.randint(0, 5)
+            if crop > 0:
+                a_pil = Image.fromarray((a * 255).astype(np.uint8))
+                a_pil = a_pil.crop((crop, crop, 28 - crop, 28 - crop))
+                a_pil = a_pil.resize((28, 28), Image.Resampling.BILINEAR)
+                a = np.array(a_pil).astype(np.float32) / 255.0
             # Small noise
-            noisy = shifted + np.random.normal(0, 0.05, shifted.shape).astype(np.float32)
-            noisy = np.clip(noisy, 0.0, 1.0)
-            aug_imgs.append(noisy)
+            a = a + np.random.normal(0, 0.04, a.shape).astype(np.float32)
+            a = np.clip(a, 0.0, 1.0)
+            aug_imgs.append(a[np.newaxis])
             aug_labels.append(lbl)
     return np.array(aug_imgs), np.array(aug_labels)
 
@@ -133,7 +142,10 @@ def train(epochs=10, batch_size=64, lr=1e-3):
     x_tr_m, y_tr_m, x_te_m, y_te_m = mnist
 
     x_ops, y_ops = load_operators_normalized()
-    x_ops_aug, y_ops_aug = augment_operators(x_ops, y_ops, factor=6)
+    x_ops_aug, y_ops_aug = augment_images(x_ops, y_ops, factor=8)
+
+    # Augment MNIST digits too (shifts/zoom help with hand-drawn variation)
+    x_tr_m, y_tr_m = augment_images(x_tr_m, y_tr_m, factor=2)
 
     # Split operators into train/test
     n = len(x_ops_aug)
