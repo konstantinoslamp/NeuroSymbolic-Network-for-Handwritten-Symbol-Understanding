@@ -334,12 +334,12 @@ class NeSyOrganism:
         return new
 
 
-# Score matrix from the paper (Table 2)
+# Score matrix from the paper (Table 2) — values are exactly ±1
 _SCORE_MATRIX = {
     ('correct', 'correct'): 0,
-    ('correct', 'wrong'): -2,
+    ('correct', 'wrong'): -1,
     ('correct', 'abstain'): -1,
-    ('wrong', 'correct'): +2,
+    ('wrong', 'correct'): +1,
     ('wrong', 'wrong'): 0,
     ('wrong', 'abstain'): +1,
     ('abstain', 'correct'): +1,

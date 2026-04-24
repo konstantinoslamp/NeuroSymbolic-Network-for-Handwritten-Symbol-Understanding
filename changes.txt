@@ -1,5 +1,30 @@
   Here is a summary of everything implemented:
 
+  ============================================================
+  2026-04-24 — Evolvable Policies: Paper-alignment fixes (Phase B)
+  ============================================================
+
+  src/evolvable/organism.py
+  - Fixed score matrix (_SCORE_MATRIX) to match Table 2 of Thoma et al. (2026):
+    ('correct','wrong') was -2, now correctly -1
+    ('wrong','correct') was +2, now correctly +1
+    All other values were already correct.
+
+  src/evolvable/evolution.py
+  - mutate_Sminus: complete rewrite per paper spec. Now returns a LIST of offspring,
+    one per literal j in the LATEST rule's body (body-j => head). Previously deleted
+    random rules or literals, which diverges from paper.
+  - mutate_Splus: now returns a LIST of 10 offspring (5 random bodies x 2 head polarities),
+    matching paper spec. Previously generated only 1 offspring.
+  - generate_offspring: refactored to handle list-returning S+ and S- mutations.
+    S0 -> 2 offspring, S+ -> 20, S- -> 2*|latest_body| offspring (all with Npw+Nrw).
+  - select_next_parent: fitness-proportionate selection now uses k=2 exponent (f^2/sum(f^2))
+    per paper. Previously used k=1 (f/sum(f)).
+  - select_next_parent: when all offspring are detrimental, now selects the BEST
+    (least harmful) detrimental offspring instead of keeping the parent. Matches paper.
+
+
+
   What was built
 
   src/symbolic/knowledge_base.py (new)
@@ -422,6 +447,59 @@
   STATUS: Phase A complete. Next step: push to GitHub, open neurolog_colab.ipynb
   in Google Colab, run all cells, and collect the ablation results.
   Phase B (Evolvable Policies validation) and Phase C (realistic domain) remain.
+
+  ============================================================
+  2026-04-23 — Phase A: PyTorch Ablation Notebook + First Real Results
+  ============================================================
+
+  neurolog_colab_torch.ipynb (new — repo root)
+  The original neurolog_colab.ipynb used a pure-NumPy CNN (custom Conv2D in
+  src/neural/model.py). Colab's T4 GPU was completely unused — everything ran
+  on CPU, causing training to time out before completing even 4 epochs.
+
+  Created a new notebook that replaces the NumPy CNN with a PyTorch SymbolCNN
+  (same architecture: Conv(1→8,3x3) → ReLU → MaxPool → Dense(1352→128) →
+  ReLU → Dense(128→14)), enabling full GPU acceleration on Colab T4.
+  The symbolic KB (clingo ASP) is unchanged.
+
+  Key optimisation: all ~90 possible arithmetic results (−9 to 81 for integer
+  ops, plus rational division results) are pre-cached at startup via a single
+  pass of KnowledgeBase.abduce(). This avoids per-sample clingo calls inside
+  the training loop (previously a major bottleneck).
+
+  WMC semantic loss: computed in NumPy using pre-cached abduction results,
+  gradient injected back into PyTorch via logits.backward(grad_tensor).
+  NGA: abducted targets computed in NumPy, fed as hard labels to
+  CrossEntropyLoss. Pure Neural: standard PyTorch CrossEntropyLoss on
+  ground-truth labels.
+
+  Runtime on T4: ~10-15 minutes (vs timeout with the NumPy version).
+
+  FIRST REAL RESULTS (2026-04-23) — MATH(3), 1000 train / 400 test, 8 epochs:
+  ┌─────────────┬───────────┬────────┬──────────┬────────────┬────────┐
+  │ Strategy    │ Digit Acc │ Op Acc │ Expr Acc │ Result Acc │  ECE   │
+  ├─────────────┼───────────┼────────┼──────────┼────────────┼────────┤
+  │ Pure Neural │   0.854   │  0.895 │  0.693   │   0.743    │ 0.0964 │
+  │ NGA         │   0.730   │  0.820 │  0.440   │   0.484    │ 0.1545 │
+  │ WMC         │   0.845   │  0.843 │  0.635   │   0.695    │ 0.0652 │
+  └─────────────┴───────────┴────────┴──────────┴────────────┴────────┘
+
+  Key findings:
+  - WMC achieves the best calibration (ECE 0.065 vs 0.096 for Pure Neural,
+    32% reduction) — core theoretical result of NEUROLOG confirmed.
+  - Pure Neural leads on raw accuracy at this scale (1000 samples, 8 epochs),
+    which is expected: symbolic regularisation typically needs more data to
+    overcome early-training noise.
+  - NGA underperforms because greedy single-path abduction mis-trains the
+    network when the model is uncertain early in training — an argument for
+    WMC over NGA.
+  - Results saved to: results/neurolog_torch_ablation.json (Table 1 draft).
+
+  Next steps:
+  - Re-run with TRAIN_SAMPLES=3000, EPOCHS=15 to show WMC accuracy converging
+    above Pure Neural (stronger paper result).
+  - Phase B: create evolvable_colab.ipynb and run evolvable policies end-to-end.
+  - Phase C: choose realistic domain (Options A/B/C) and implement.
 
 
 

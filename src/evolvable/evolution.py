@@ -42,55 +42,63 @@ def mutate_S0(organism: NeSyOrganism) -> NeSyOrganism:
     return organism.copy_organism()
 
 
-def mutate_Splus(organism: NeSyOrganism, atoms: List[str] = None) -> NeSyOrganism:
+def mutate_Splus(organism: NeSyOrganism, atoms: List[str] = None) -> List[NeSyOrganism]:
     """
-    S+: Rule addition — append a random rule to the policy.
+    S+: Rule addition — 10 offspring: 5 random bodies x 2 head polarities.
 
-    This leverages MC's elaboration tolerance: the new rule has highest
-    priority and can override/correct existing behavior.
+    Per the paper (Thoma et al. 2026): generate 5 candidate rules with
+    random bodies, each tried with both h and -h heads, giving 10 offspring.
+    Each appended rule has highest priority (MC elaboration tolerance).
     """
-    child = organism.copy_organism()
-    atoms = atoms or child.atoms
+    atoms = atoms or organism.atoms
+    offspring = []
 
-    # Random body length (1 to min(4, len(atoms)))
-    body_len = random.randint(1, min(4, len(atoms)))
-    body_atoms = random.sample(atoms, body_len)
-    body = [Literal(a, random.choice([True, False])) for a in body_atoms]
-    head = Literal('h', random.choice([True, False]))
+    for _ in range(5):
+        body_len = random.randint(1, min(4, len(atoms)))
+        body_atoms = random.sample(atoms, body_len)
+        body = [Literal(a, random.choice([True, False])) for a in body_atoms]
 
-    rule_name = f"R{len(child.symbolic.policy.rules) + 1}"
-    child.symbolic.induce(Rule(body, head, name=rule_name))
+        for polarity in [True, False]:
+            child = organism.copy_organism()
+            head = Literal('h', polarity)
+            rule_name = f"R{len(child.symbolic.policy.rules) + 1}"
+            child.symbolic.induce(Rule(body, head, name=rule_name))
+            offspring.append(child)
 
-    return child
+    return offspring
 
 
-def mutate_Sminus(organism: NeSyOrganism) -> NeSyOrganism:
+def mutate_Sminus(organism: NeSyOrganism) -> List[NeSyOrganism]:
     """
-    S-: Simplification — remove a rule or remove a literal from a rule body.
+    S-: Simplification — one offspring per literal j in the LATEST rule's body.
 
-    Two sub-strategies chosen at random:
-      (a) Remove a random rule entirely
-      (b) Remove a random literal from a random rule's body
+    Per the paper (Thoma et al. 2026): for each literal j in the body of the
+    highest-priority (last) rule, produce a new offspring whose policy has that
+    rule replaced by a version with literal j dropped from its body.
+    If the latest rule has only one literal, return a single clone.
+
+    Returns:
+        List of offspring, one per removable literal in the latest rule.
     """
-    child = organism.copy_organism()
-    rules = child.symbolic.policy.rules
-
+    rules = organism.symbolic.policy.rules
     if not rules:
-        return child  # Nothing to simplify
+        return [organism.copy_organism()]
 
-    if random.random() < 0.5 and len(rules) > 1:
-        # (a) Remove a random rule
-        idx = random.randint(0, len(rules) - 1)
-        rules.pop(idx)
-    else:
-        # (b) Remove a random literal from a random rule body
-        candidates = [i for i, r in enumerate(rules) if len(r.body) > 1]
-        if candidates:
-            idx = random.choice(candidates)
-            lit_idx = random.randint(0, len(rules[idx].body) - 1)
-            rules[idx].body.pop(lit_idx)
+    latest_rule = rules[-1]
 
-    return child
+    if len(latest_rule.body) <= 1:
+        return [organism.copy_organism()]
+
+    offspring = []
+    for j in range(len(latest_rule.body)):
+        child = organism.copy_organism()
+        child_rules = child.symbolic.policy.rules
+        new_body = [lit for k, lit in enumerate(latest_rule.body) if k != j]
+        new_rule = Rule(new_body, child_rules[-1].head, name=child_rules[-1].name)
+        child_rules[-1] = new_rule
+        offspring.append(child)
+
+    return offspring
 
 
 # ---------------------------------------------------------------------------
@@ -148,30 +156,48 @@ NEURAL_MUTATIONS = {
 def generate_offspring(parent: NeSyOrganism,
                        atoms: List[str] = None) -> List[Tuple[str, NeSyOrganism]]:
     """
-    Generate all 6 offspring from combinations of symbolic and neural mutations.
+    Generate offspring from all symbolic x neural mutation combinations.
+
+    S0 produces 2 offspring (Npw, Nrw).
+    S+ produces 20 offspring (10 symbolic variants x 2 neural mutations).
+    S- produces 2*|body_of_latest_rule| offspring (one per literal x 2 neural).
 
     Returns:
         List of (mutation_label, offspring) tuples.
-        Labels: 'S0_Npw', 'S0_Nrw', 'S+_Npw', 'S+_Nrw', 'S-_Npw', 'S-_Nrw'
     """
     offspring = []
+    _atoms = atoms or parent.atoms
 
-    for s_name, s_fn in SYMBOLIC_MUTATIONS.items():
+    # S0: clone, both neural mutations
+    for n_name, n_fn in NEURAL_MUTATIONS.items():
+        child = mutate_S0(parent)
+        if n_name == 'Npw':
+            n_fn(child, parent)
+        else:
+            n_fn(child)
+        offspring.append((f"S0_{n_name}", child))
+
+    # S+: 10 symbolic variants, each with both neural mutations
+    splus_children = mutate_Splus(parent, _atoms)
+    for i, child in enumerate(splus_children):
         for n_name, n_fn in NEURAL_MUTATIONS.items():
-            # Apply symbolic mutation
-            if s_name == 'S+':
-                child = s_fn(parent, atoms)
-            else:
-                child = s_fn(parent)
-
-            # Apply neural mutation
+            c = child.copy_organism()
             if n_name == 'Npw':
-                n_fn(child, parent)
+                n_fn(c, parent)
             else:
-                n_fn(child)
+                n_fn(c)
+            offspring.append((f"S+{i}_{n_name}", c))
 
-            label = f"{s_name}_{n_name}"
-            offspring.append((label, child))
+    # S-: one child per removable literal, each with both neural mutations
+    sminus_children = mutate_Sminus(parent)
+    for i, child in enumerate(sminus_children):
+        for n_name, n_fn in NEURAL_MUTATIONS.items():
+            c = child.copy_organism()
+            if n_name == 'Npw':
+                n_fn(c, parent)
+            else:
+                n_fn(c)
+            offspring.append((f"S-{i}_{n_name}", c))
 
     return offspring
 
@@ -192,9 +218,9 @@ def select_next_parent(parent: NeSyOrganism,
       3. Detrimental: relative fitness < 0 (worse than parent)
 
     Selection priority:
-      - If beneficial group non-empty: fitness-proportionate selection from it
+      - If beneficial group non-empty: k=2 fitness-proportionate selection from it
       - Elif neutral group non-empty: uniform random from it
-      - Else: keep current parent (no improvement possible this generation)
+      - Else: select best (least harmful) detrimental offspring (never keep parent)
 
     Args:
         parent: current parent organism
@@ -216,9 +242,10 @@ def select_next_parent(parent: NeSyOrganism,
     }
 
     if beneficial:
-        # Fitness-proportionate selection
-        fitnesses = np.array([r['fitness'] for r in beneficial])
-        probs = fitnesses / fitnesses.sum()
+        # Fitness-proportionate selection with k=2 exponent (paper spec)
+        fitnesses = np.array([r['fitness'] for r in beneficial], dtype=float)
+        weights = fitnesses ** 2
+        probs = weights / weights.sum()
         idx = np.random.choice(len(beneficial), p=probs)
         selected = beneficial[idx]
         info['selection'] = 'beneficial'
@@ -236,11 +263,13 @@ def select_next_parent(parent: NeSyOrganism,
         return selected['organism'], info
 
     else:
-        # Keep parent
-        info['selection'] = 'parent_kept'
-        info['selected_label'] = 'parent'
-        info['selected_fitness'] = 0.0
-        return parent, info
+        # Select best detrimental offspring (least harmful) — paper spec
+        # Do NOT keep parent; always move to best available offspring
+        best = max(detrimental, key=lambda r: r['fitness'])
+        info['selection'] = 'detrimental'
+        info['selected_label'] = best['label']
+        info['selected_fitness'] = best['fitness']
+        return best['organism'], info
 
 
 # ---------------------------------------------------------------------------
