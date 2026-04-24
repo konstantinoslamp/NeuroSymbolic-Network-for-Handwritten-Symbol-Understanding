@@ -11,7 +11,10 @@ from bridge.neurosymbolic_connector import NeurosymbolicSolver
 class DrawingApp:
     """Simple UI for drawing digits and operators"""
     
-    def __init__(self, root, model_path='src/neural/trained_cnn_model.pkl'):
+    def __init__(self, root, model_path=None):
+        if model_path is None:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            model_path = os.path.join(script_dir, 'neural', 'trained_cnn_model.pkl')
         self.root = root
         self.root.title("Handwritten Arithmetic Solver")
         
@@ -254,9 +257,11 @@ class DrawingApp:
 def main():
     """Run the application"""
     import os
-    
-    # Check if model exists
-    model_path = 'src/neural/trained_cnn_model.pkl'
+
+    # Resolve model path relative to this script, not the CWD
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    model_path = os.path.join(script_dir, 'neural', 'trained_cnn_model.pkl')
+
     if not os.path.exists(model_path):
         print("="*70)
         print("⚠ WARNING: Model file not found!")
