@@ -71,14 +71,21 @@ class DrawingApp:
         self.last_y = None
         self.brush_width = 15
 
+        # Prefer the retrained PyTorch model if it exists
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        pt_model_path = os.path.join(script_dir, 'neural', 'ui_cnn_model.pt')
+        if os.path.exists(pt_model_path):
+            model_path = pt_model_path
+            print(f"Using retrained PyTorch model: {pt_model_path}")
+
         # Load neurosymbolic solver
         print("Initializing Neurosymbolic Solver...")
         try:
             self.solver = NeurosymbolicSolver(model_path)
-            print("✓ Solver loaded successfully!")
+            print("Solver loaded successfully!")
         except FileNotFoundError:
-            print(f"⚠ Warning: Model file '{model_path}' not found.")
-            print("  Please train the model first: python src/neural/train.py")
+            print(f"Warning: Model file '{model_path}' not found.")
+            print("  Run: python src/neural/retrain_ui_model.py")
             self.solver = None
         
     def start_draw(self, event):

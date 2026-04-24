@@ -158,56 +158,72 @@ def solve_arithmetic(symbols: List[Tuple[str, float]]) -> Dict:
 
 class NeurosymbolicSolver:
     """Connects CNN predictions with symbolic reasoning"""
-    
+
     def __init__(self, model_path: str):
-        """
-        Initialize with trained CNN model.
-        
-        Args:
-            model_path: Path to saved model weights (.pkl file)
-        """
         print("Loading CNN model...")
-        self.cnn = CNN()
-        self.cnn.load_weights(model_path)
-        print("✓ Model loaded successfully")
-        
-        # Mapping from class index to symbol
         self.class_to_symbol = {
             0: '0', 1: '1', 2: '2', 3: '3', 4: '4',
             5: '5', 6: '6', 7: '7', 8: '8', 9: '9',
-            10: '+', 11: '-', 12: '×', 13: '÷'
+            10: '+', 11: '-', 12: 'x', 13: '/'
         }
+        self._use_torch = False
+
+        if model_path.endswith('.pt'):
+            # PyTorch model (retrained)
+            import torch
+            import torch.nn as nn
+            import torch.nn.functional as F
+
+            class _UICnn(nn.Module):
+                def __init__(self):
+                    super().__init__()
+                    self.conv1 = nn.Conv2d(1, 16, 3, padding=1)
+                    self.conv2 = nn.Conv2d(16, 32, 3, padding=1)
+                    self.pool  = nn.MaxPool2d(2, 2)
+                    self.fc1   = nn.Linear(32 * 7 * 7, 128)
+                    self.fc2   = nn.Linear(128, 14)
+                    self.drop  = nn.Dropout(0.3)
+                def forward(self, x):
+                    x = F.relu(self.conv1(x))
+                    x = self.pool(F.relu(self.conv2(x)))
+                    x = self.pool(x)
+                    x = x.view(x.size(0), -1)
+                    x = F.relu(self.fc1(x))
+                    x = self.drop(x)
+                    return self.fc2(x)
+
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            self._torch_model = _UICnn().to(device)
+            self._torch_model.load_state_dict(torch.load(model_path, map_location=device))
+            self._torch_model.eval()
+            self._torch_device = device
+            self._use_torch = True
+            print(f"Model loaded from {model_path} (PyTorch, device={device})")
+        else:
+            self.cnn = CNN()
+            self.cnn.load_weights(model_path)
+            print(f"Model loaded from {model_path}")
     
     def predict_symbol(self, image: np.ndarray) -> Tuple[str, float]:
-        """
-        Predict symbol from image using CNN.
-        
-        Args:
-            image: numpy array of shape (28, 28) or (1, 1, 28, 28)
-            
-        Returns:
-            (predicted_symbol, confidence)
-        """
-        # Ensure correct shape: (1, 1, 28, 28)
+        # Ensure shape (1, 1, 28, 28)
         if image.shape == (28, 28):
             image = image[np.newaxis, np.newaxis, :, :]
         elif image.shape == (1, 28, 28):
             image = image[:, np.newaxis, :, :]
-        
-        # CNN forward pass
-        logits = self.cnn.forward(image)
-        
-        # Convert to probabilities (softmax)
+
+        if self._use_torch:
+            import torch
+            with torch.no_grad():
+                x = torch.FloatTensor(image).to(self._torch_device)
+                logits = self._torch_model(x).cpu().numpy()
+        else:
+            logits = self.cnn.forward(image)
+
         probs = np.exp(logits - np.max(logits, axis=1, keepdims=True))
         probs = probs / np.sum(probs, axis=1, keepdims=True)
-        
-        # Get prediction
-        predicted_class = np.argmax(probs[0])
+        predicted_class = int(np.argmax(probs[0]))
         confidence = float(probs[0][predicted_class])
-        
-        # Map to symbol
         symbol = self.class_to_symbol.get(predicted_class, '?')
-        
         return symbol, confidence
     
     def solve_expression(self, images: List[np.ndarray]) -> Dict:
