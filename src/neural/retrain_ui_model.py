@@ -101,8 +101,8 @@ def load_operators_normalized():
 
 def augment_images(imgs, labels, factor=3):
     """
-    Augment images with random shifts, scaling, noise and rotation-like shear.
-    Applied to both digits and operators so the model handles hand-drawn variation.
+    Gentle augmentation: small shifts + tiny noise only.
+    Keeps digits recognisable while adding hand-drawn variation.
     """
     aug_imgs, aug_labels = [], []
     for img, lbl in zip(imgs, labels):
@@ -110,19 +110,12 @@ def augment_images(imgs, labels, factor=3):
         aug_labels.append(lbl)
         for _ in range(factor - 1):
             a = img[0].copy()  # (28, 28)
-            # Random shift ±3px
-            sx = np.random.randint(-3, 4)
-            sy = np.random.randint(-3, 4)
+            # Small shift ±2px only
+            sx = np.random.randint(-2, 3)
+            sy = np.random.randint(-2, 3)
             a = np.roll(np.roll(a, sy, axis=0), sx, axis=1)
-            # Random zoom: crop 22-28px region and resize back to 28x28
-            crop = np.random.randint(0, 5)
-            if crop > 0:
-                a_pil = Image.fromarray((a * 255).astype(np.uint8))
-                a_pil = a_pil.crop((crop, crop, 28 - crop, 28 - crop))
-                a_pil = a_pil.resize((28, 28), Image.Resampling.BILINEAR)
-                a = np.array(a_pil).astype(np.float32) / 255.0
-            # Small noise
-            a = a + np.random.normal(0, 0.04, a.shape).astype(np.float32)
+            # Very small noise
+            a = a + np.random.normal(0, 0.02, a.shape).astype(np.float32)
             a = np.clip(a, 0.0, 1.0)
             aug_imgs.append(a[np.newaxis])
             aug_labels.append(lbl)
