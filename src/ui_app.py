@@ -228,29 +228,37 @@ class DrawingApp:
         # Segment the image
         segments = self.segment_characters()
         print(f"\n  Using {len(segments)} segments")
-        
+
         # Extract just the images (not positions)
         images = [seg[1] for seg in segments]
-        
+
+        # Run CNN predictions directly so we can show them regardless of outcome
+        predictions = []
+        for img in images:
+            sym, conf = self.solver.predict_symbol(img)
+            predictions.append((sym, conf))
+            print(f"  Predicted: '{sym}' ({conf:.1%})")
+
+        pred_str = "  ".join(f"'{s}' {c:.0%}" for s, c in predictions)
+
         # Use neurosymbolic solver
         result = self.solver.solve_expression(images)
-        
+
         # Display result
         if result['success']:
             expr = result['expression']
             ans = result['result']
-            result_text = f"✓ {expr} = {ans}"
+            result_text = f"{expr} = {ans}\n[{pred_str}]"
             self.result_label.config(text=result_text, fg='green', font=('Arial', 16, 'bold'))
-            print(f"\n{'='*70}")
-            print(f"FINAL ANSWER: {result_text}")
-            print(f"{'='*70}\n")
+            print(f"\nFINAL ANSWER: {expr} = {ans}")
         else:
-            result_text = f"✗ {result['explanation']}"
-            self.result_label.config(text=result_text, fg='red')
-        
+            result_text = f"Failed: {result['explanation']}\nCNN saw: {pred_str}"
+            self.result_label.config(text=result_text, fg='red', font=('Arial', 13))
+            print(f"\nFailed: {result['explanation']}")
+
         # Show validation messages if any
         if result.get('validations'):
-            print("\nValidation details:")
+            print("Validations:")
             for msg in result['validations']:
                 print(f"  {msg}")
 
