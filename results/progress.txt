@@ -1,0 +1,198 @@
+================================================================
+  COS521 NEUROSYMBOLIC MVP — EXPERIMENTAL RESULTS
+  Date: 2026-04-24
+================================================================
+
+
+================================================================
+  PHASE A: NEUROLOG 3-Way Ablation
+  Source file: results/neurolog_torch_ablation.json
+  Reference:   Tsamoura & Michael, AAAI 2021
+================================================================
+
+Setup:
+  - Task:         Arithmetic expression recognition (MNIST digits + operators)
+  - Train size:   300 samples
+  - Val / Test:   100 / 100 samples
+  - Epochs:       8
+  - Architecture: PyTorch CNN (T4 GPU, ~1 min total)
+  - 3 conditions: Pure Neural | NGA (Neural-Guided Abduction) | WMC (Semantic Loss)
+
+------------------------------------------------------------------
+  TABLE 1 — Evaluation Metrics (Test Set)
+------------------------------------------------------------------
+
+  Method        | Digit Acc | Op Acc | Expr Acc | Result Acc | ECE
+  --------------|-----------|--------|----------|------------|------
+  Pure Neural   |   85.4%   |  89.5% |   69.3%  |   74.3%    | 0.096
+  NGA           |   73.0%   |  82.0% |   44.0%  |   48.4%    | 0.155
+  WMC           |   84.5%   |  84.3% |   63.5%  |   69.5%    | 0.065
+
+  Best per column marked with *:
+    Digit Acc   → Pure Neural  (85.4%)
+    Op Acc      → Pure Neural  (89.5%)
+    Expr Acc    → Pure Neural  (69.3%)
+    Result Acc  → Pure Neural  (74.3%)
+    ECE (lower is better) → WMC (0.065) *
+
+------------------------------------------------------------------
+  TABLE 2 — Training Loss per Epoch
+------------------------------------------------------------------
+
+  Epoch | Pure Neural (loss) | NGA (loss) | WMC (loss)
+  ------|-------------------|------------|------------
+    1   |      2.301        |   2.168    |   5.284
+    2   |      1.488        |   1.844    |   4.047
+    3   |      0.958        |   1.687    |   3.000
+    4   |      0.713        |   1.584    |   2.136
+    5   |      0.587        |   1.452    |   1.666
+    6   |      0.506        |   1.263    |   1.404
+    7   |      0.463        |   1.068    |   1.268
+    8   |      0.417        |   0.950    |   1.150
+
+------------------------------------------------------------------
+  KEY FINDINGS — PHASE A
+------------------------------------------------------------------
+
+  1. WMC achieves the best calibration (ECE 0.065 vs 0.096 for Pure
+     Neural) — a 32% reduction in calibration error. This confirms
+     that semantic loss integrates symbolic constraints into the
+     neural training signal, producing better-calibrated predictions.
+
+  2. Pure Neural achieves the highest task accuracy (74.3% result
+     accuracy) because it optimises directly on labels without the
+     overhead of abductive proof search.
+
+  3. NGA underperforms both other methods (48.4% result accuracy,
+     ECE 0.155). The abductive targets used as supervision are noisy
+     when the symbolic module has limited coverage, causing the
+     neural module to learn an inconsistent signal.
+
+  4. WMC loss starts high (5.28 at epoch 1) and decreases steadily,
+     reflecting the negative log of the weighted model count.
+
+  Runtime: Pure Neural ~0.78s | NGA ~6.27s | WMC ~0.61s (GPU)
+
+
+================================================================
+  PHASE B: Evolvable Policies — Evolutionary Rule Learning
+  Source file: results/evolvable_torch_results (2).json
+  Reference:   Thoma, Vassiliades & Michael, 2026
+================================================================
+
+Setup:
+  - Atoms:          4 (a1, a2, a3, a4)
+  - Target rules:   4
+  - Policy seed:    42
+  - Train / Val / Test: 300 / 100 / 100 samples
+  - Train epochs per offspring: 8
+  - Max generations: 15  (early stop at 95% val accuracy)
+  - Offspring per generation: ~22+
+      S0  x 2  (clone + neural mutation)
+      S+  x 20 (10 rule-addition variants x 2 neural mutations)
+      S-  x 2k (k = literals in latest rule body, x 2 neural mutations)
+  - Architecture: PyTorch AtomCNN (T4 GPU)
+
+Target policy (hidden from learner):
+  R1 :: a2, a1 implies -h
+  R2 :: a1, a4, a3, -a2 implies h
+  R3 :: -a4, a3 implies -h
+  R4 :: -a4, a2 implies h
+
+------------------------------------------------------------------
+  TABLE 3 — Accuracy Trajectory
+------------------------------------------------------------------
+
+  Gen | Val Correct | Val Wrong | Val Abstain | Selected       | Fitness
+  ----|-------------|-----------|-------------|----------------|--------
+   0  |    0.000    |   0.000   |    1.000    | (initial)      |   —
+   1  |    0.570    |   0.430   |    0.000    | S+8_Nrw (B)    | +0.14
+   2  |    0.430    |   0.120   |    0.450    | S+1_Npw (B)    | +0.17
+   3  |    0.420    |   0.090   |    0.490    | S-0_Npw (B)    | +0.03
+   4  |    0.730    |   0.270   |    0.000    | S+6_Nrw (B)    | +0.15
+   5  |    0.740    |   0.260   |    0.000    | S-2_Nrw (B)    | +0.01
+   6  |    0.750    |   0.250   |    0.000    | S0_Nrw  (B)    | +0.01
+   7  |    0.740    |   0.260   |    0.000    | S+5_Nrw (D)    | -0.01
+   8  |    0.720    |   0.280   |    0.000    | S0_Npw  (D)    | -0.02
+   9  |    0.700    |   0.300   |    0.000    | S+5_Nrw (D)    | -0.02
+  10  |    0.750    |   0.250   |    0.000    | S+9_Nrw (B)    | +0.05
+  11  |    0.820    |   0.180   |    0.000    | S+9_Nrw (B)    | +0.07
+  12  |    0.970    |   0.030   |    0.000    | S+4_Npw (B)    | +0.15
+  ** Early stop triggered: 0.970 >= 0.95 **
+
+  Selection type: B = Beneficial, D = Detrimental
+
+------------------------------------------------------------------
+  TABLE 4 — Final Test Set Results
+------------------------------------------------------------------
+
+  Metric          | Value
+  ----------------|-------
+  Test Correct    | 99.0%
+  Test Wrong      |  1.0%
+  Test Abstain    |  0.0%
+  Val Best        | 97.0%
+  Generations     |    12
+  Total time      |  7.2 min
+
+------------------------------------------------------------------
+  TABLE 5 — Selection Statistics
+------------------------------------------------------------------
+
+  Selection Type | Count | % of Generations
+  ---------------|-------|------------------
+  Beneficial     |   9   |      75%
+  Detrimental    |   3   |      25%
+  Neutral        |   0   |       0%
+
+------------------------------------------------------------------
+  KEY FINDINGS — PHASE B
+------------------------------------------------------------------
+
+  1. The organism started with an empty policy (100% abstain at
+     generation 0) and discovered a working symbolic policy purely
+     through evolutionary search — no gradient on the policy rules.
+
+  2. S+ (rule addition) mutations drove all major accuracy gains:
+     gens 1, 2, 4, 10, 11, 12 were all S+ selections. This confirms
+     the elaboration-tolerance property of MC semantics — new rules
+     appended at the end override conflicting earlier rules.
+
+  3. Gens 7-9 show a detrimental exploration phase (accuracy dipped
+     from 75% to 70%). The algorithm continued rather than freezing
+     (per paper spec: select best detrimental, never keep parent).
+     This exploration enabled the breakthrough at gen 10-12.
+
+  4. Final test accuracy 99% — near-perfect recovery of the hidden
+     symbolic policy from noisy MNIST-based atom observations.
+
+  5. Early stop at generation 12 (val 97% >= threshold 95%),
+     demonstrating efficient convergence.
+
+  Runtime: 432s / 7.2 min on T4 GPU
+           (previous broken run: 90s flat at 57% — old code)
+
+
+================================================================
+  SUMMARY TABLE — BOTH PHASES
+================================================================
+
+  Phase   | Experiment              | Key Result
+  --------|-------------------------|---------------------------
+  Phase A | Pure Neural (baseline)  | 74.3% accuracy, ECE 0.096
+  Phase A | NGA                     | 48.4% accuracy, ECE 0.155
+  Phase A | WMC (semantic loss)     | 69.5% accuracy, ECE 0.065 (best calibration)
+  Phase B | Evolvable Policies      | 0% -> 99% in 12 generations
+
+================================================================
+  FILES
+================================================================
+
+  results/neurolog_torch_ablation.json      — Phase A raw data
+  results/evolvable_torch_results (2).json  — Phase B raw data (valid run)
+  results/evolvable_fitness (4).png         — Phase B fitness plot
+  results/evolvable_torch_results (1).json  — INVALID (old code, flat 57%)
+  results/evolvable_results.json            — INVALID (bug: all-positive policy)
+  results/evolvable_results (1).json        — INVALID (bug: all-positive policy)
+
+================================================================
