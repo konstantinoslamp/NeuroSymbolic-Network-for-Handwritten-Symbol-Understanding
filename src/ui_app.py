@@ -111,75 +111,102 @@ class DrawingApp:
         """
         Segment the drawn image into individual characters.
         Returns list of (x_pos, image_array) tuples.
+
+        Uses vertical projection with gap-closing: short gaps (< 20px wide)
+        inside a character region are bridged so that '+' strokes don't split.
+        If projection-based segmentation finds != 3 segments, falls back to
+        dividing the canvas into 3 equal columns.
         """
-        # Convert to numpy array
         img_array = np.array(self.image)
-        
-        # Find vertical projection (sum along vertical axis)
-        vertical_projection = np.sum(img_array < 200, axis=0)  # Count black pixels
-        
-        # Find gaps (where projection is near zero)
-        threshold = 5
-        is_gap = vertical_projection < threshold
-        
-        # Find character boundaries
-        segments = []
+
+        # Vertical projection: count dark pixels per column
+        vertical_projection = np.sum(img_array < 200, axis=0)
+        is_gap = vertical_projection < 3  # column has fewer than 3 dark pixels
+
+        # Close short gaps (bridges internal gaps in '+', '-', etc.)
+        GAP_CLOSE = 20  # px — gaps narrower than this inside a character are filled
+        closed_gap = is_gap.copy()
+        i = 0
+        while i < len(closed_gap):
+            if closed_gap[i]:  # start of a gap
+                j = i
+                while j < len(closed_gap) and closed_gap[j]:
+                    j += 1
+                gap_width = j - i
+                # Only close if surrounded by ink on both sides
+                left_ink  = i > 0 and not is_gap[i - 1]
+                right_ink = j < len(closed_gap) and not is_gap[j]
+                if gap_width < GAP_CLOSE and left_ink and right_ink:
+                    closed_gap[i:j] = False
+                i = j
+            else:
+                i += 1
+
+        # Find character boundaries from closed projection
+        raw_segments = []
         in_char = False
         start = 0
-        
-        for i, is_g in enumerate(is_gap):
-            if not is_g and not in_char:  # Start of character
+        for i, is_g in enumerate(closed_gap):
+            if not is_g and not in_char:
                 start = i
                 in_char = True
-            elif is_g and in_char:  # End of character
-                if i - start > 10:  # Minimum width to avoid noise
-                    segments.append((start, i))
+            elif is_g and in_char:
+                if i - start > 10:
+                    raw_segments.append((start, i))
                 in_char = False
-        
-        # Handle last character
         if in_char:
-            segments.append((start, len(is_gap)))
-        
-        # Extract and resize each character to 28x28
+            raw_segments.append((start, len(closed_gap)))
+
+        # Merge any segments that are very close together (< 15px gap)
+        segments = []
+        for seg in raw_segments:
+            if segments and seg[0] - segments[-1][1] < 15:
+                segments[-1] = (segments[-1][0], seg[1])
+            else:
+                segments.append(list(seg))
+
+        print(f"  Projection segmentation found {len(segments)} segment(s): {segments}")
+
+        # Fallback: split canvas into 3 equal thirds
+        if len(segments) != 3:
+            print(f"  Falling back to equal-thirds split (canvas width={self.canvas_width})")
+            w = self.canvas_width
+            segments = [
+                [0,          w // 3],
+                [w // 3,     2 * w // 3],
+                [2 * w // 3, w],
+            ]
+
+        # Extract and resize each segment to 28x28
         characters = []
         for start_x, end_x in segments:
-            # Extract character region
             char_img = img_array[:, start_x:end_x]
-            
-            # Find vertical bounds (crop whitespace)
+
+            # Crop vertical whitespace
             vertical_proj = np.sum(char_img < 200, axis=1)
             nonzero_rows = np.where(vertical_proj > 0)[0]
-            
             if len(nonzero_rows) == 0:
+                # Blank region — make an empty 28x28
+                characters.append((start_x, np.zeros((28, 28), dtype=np.float32)))
                 continue
-                
-            top = max(0, nonzero_rows[0] - 5)
+
+            top    = max(0, nonzero_rows[0] - 5)
             bottom = min(char_img.shape[0], nonzero_rows[-1] + 5)
-            
             char_img = char_img[top:bottom, :]
-            
-            # Resize to 28x28 while preserving aspect ratio
+
+            # Pad to square then resize to 28x28
             char_pil = Image.fromarray(char_img)
-            
-            # Calculate padding to make it square
             w, h = char_pil.size
-            max_dim = max(w, h)
-            
-            # Create square white image
+            max_dim = max(w, h, 1)
             square_img = Image.new('L', (max_dim, max_dim), 255)
-            # Paste character in center
             square_img.paste(char_pil, ((max_dim - w) // 2, (max_dim - h) // 2))
-            
-            # Resize to 28x28
             resized = square_img.resize((28, 28), Image.Resampling.LANCZOS)
-            
-            # Convert to numpy and normalize
+
             char_array = np.array(resized).astype(np.float32) / 255.0
-            # Invert (MNIST is white on black, we have black on white)
-            char_array = 1.0 - char_array
-            
+            char_array = 1.0 - char_array  # invert: MNIST is white-on-black
+
             characters.append((start_x, char_array))
-        
+
         return characters
     
     def recognize_and_solve(self):
@@ -197,13 +224,7 @@ class DrawingApp:
         
         # Segment the image
         segments = self.segment_characters()
-        
-        if len(segments) != 3:
-            result_text = f"Error: Found {len(segments)} symbols, need exactly 3 (digit operator digit)"
-            self.result_label.config(text=result_text, fg='red')
-            return
-        
-        print(f"\n✓ Found {len(segments)} segments")
+        print(f"\n  Using {len(segments)} segments")
         
         # Extract just the images (not positions)
         images = [seg[1] for seg in segments]
